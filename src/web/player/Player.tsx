@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { clockLabel, prayerNow, todaysPrayers, type PrayerConfig } from '../../shared/prayer'
-import type { Cmd, CmdItem, PlayerStatus, PlayerToServer, ServerToPlayer } from '../../shared/types'
+import type {
+  Announcement,
+  Cmd,
+  CmdItem,
+  PlayerStatus,
+  PlayerToServer,
+  ServerToPlayer,
+  Ticker,
+} from '../../shared/types'
 import { formatClock, readableOn } from '../lib/format'
 import { hasTimeline, loadYouTubeApi, locate, sourceFor, syncCache, type YTPlayer } from './engine'
 
@@ -9,7 +17,8 @@ const CMD_KEY = 'adcast_cmd'
 const INFO_KEY = 'adcast_info'
 
 type Info = {
-  device: { id: string; name: string; offset?: number }
+  device: { id: string; name: string; offset?: number; rotation?: number }
+  ticker?: Ticker | null
   prayer?: PrayerConfig | null
   tenant: { name: string; brandColor: string; logoUrl: string | null }
 }
@@ -130,6 +139,7 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
   const [now, setNow] = useState(Date.now())
   const [imageSrc, setImageSrc] = useState<string | null>(null)
   const [praying, setPraying] = useState<{ label: string; until: string } | null>(null)
+  const [ann, setAnn] = useState<Announcement | null>(null)
 
   const video = useRef<HTMLVideoElement>(null)
   const ytHost = useRef<HTMLDivElement>(null)
@@ -222,6 +232,7 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
         if (msg.t === 'welcome') {
           if (bestRtt === Infinity) clockOffset.current = msg.now - Date.now()
           apply(msg.cmd)
+          setAnn(msg.ann ?? null)
           setTimeout(report, 500)
         } else if (msg.t === 'time') {
           const rtt = Date.now() - msg.c
@@ -231,6 +242,8 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
           }
         } else if (msg.t === 'cmd') {
           apply(msg.cmd)
+        } else if (msg.t === 'announcement') {
+          setAnn(msg.a)
         } else if (msg.t === 'revoked') {
           onRevoked()
         } else if (msg.t === 'refresh') {
@@ -255,6 +268,7 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
 
   const cmdKey = cmd ? `${cmd.id}:${cmd.paused}:${cmd.startAt}` : ''
   const prayerKey = praying?.label ?? ''
+  const annKey = ann?.id ?? ''
 
   // Prayer times are worked out on the TV itself, so the pause still happens without internet.
   const prayer = info?.prayer ?? null
@@ -334,6 +348,15 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
       setImageSrc(null)
       setView({ phase: 'paused' })
       // When the pause ends this effect runs again and rejoins the shared timeline.
+      return
+    }
+
+    if (annKey) {
+      el.pause()
+      stopYouTube()
+      setImageSrc(null)
+      setView({ phase: 'paused' })
+      // The announcement covers the screen; clearing it runs this effect again and rejoins the timeline.
       return
     }
 
@@ -476,7 +499,7 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
     }
     // cmdKey captures every field of cmd that changes playback.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cmdKey, token, prayerKey])
+  }, [cmdKey, token, prayerKey, annKey])
 
   useEffect(() => {
     report()
@@ -518,9 +541,29 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
   const brand = info?.tenant.brandColor ?? '#0f766e'
   const showVideo = view.item?.kind === 'file' && view.phase !== 'idle'
   const showYouTube = view.item?.kind === 'youtube' && view.phase !== 'idle'
+  const rotation = info?.device.rotation ?? 0
+  const ticker = cmd?.ticker ?? info?.ticker ?? null
+  const showTicker =
+    !!ticker?.text &&
+    !praying &&
+    !ann &&
+    (view.phase === 'playing' || view.phase === 'waiting' || view.phase === 'paused')
 
   return (
-    <>
+    <div
+      className="absolute overflow-hidden bg-black"
+      style={
+        rotation
+          ? {
+              top: '50%',
+              left: '50%',
+              width: '100vh',
+              height: '100vw',
+              transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+            }
+          : { inset: 0 }
+      }
+    >
       <video
         ref={video}
         playsInline
@@ -568,7 +611,72 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
       {view.phase === 'paused' && !praying && <Note>Dijeda</Note>}
       {view.phase === 'error' && <Note>{view.error ?? 'Video tidak bisa diputar'}. Mencoba lagi.</Note>}
       {muted && view.phase === 'playing' && <Note>Tekan OK pada remote untuk menyalakan suara</Note>}
-    </>
+
+      {showTicker && ticker && <TickerBar ticker={ticker} />}
+
+      {ann && (
+        <div
+          className="absolute inset-0 z-20 grid place-items-center overflow-hidden p-[6vw] text-center"
+          style={{ background: ann.bg, color: readableOn(ann.bg) }}
+        >
+          <p className="text-[7vw] leading-tight font-extrabold whitespace-pre-wrap">{ann.text}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Draws the text itself and scrolls it right to left at the configured speed. */
+function TickerBar({ ticker }: { ticker: Ticker }) {
+  const bar = useRef<HTMLDivElement>(null)
+  const text = useRef<HTMLSpanElement>(null)
+  const [size, setSize] = useState({ bar: 0, font: 0 })
+
+  useEffect(() => {
+    const el = bar.current
+    const span = text.current
+    const stage = el?.parentElement
+    if (!el || !span || !stage) return
+
+    const measure = () => {
+      const h = stage.clientHeight
+      setSize({ bar: Math.round(h * 0.1), font: Math.round(h * 0.06) })
+      // Older TV browsers without the Web Animations API just show the text at rest.
+      if (typeof span.animate !== 'function') return
+      for (const animation of span.getAnimations()) animation.cancel()
+      const distance = span.offsetWidth + stage.clientWidth
+      span.animate(
+        [{ transform: `translateX(${stage.clientWidth}px)` }, { transform: 'translateX(-100%)' }],
+        {
+          duration: Math.max(4000, (distance / Math.max(20, ticker.speed)) * 1000),
+          iterations: Infinity,
+          easing: 'linear',
+        },
+      )
+    }
+    measure()
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+    observer?.observe(stage)
+    return () => {
+      observer?.disconnect()
+      for (const animation of span.getAnimations()) animation.cancel()
+    }
+  }, [ticker.text, ticker.speed])
+
+  return (
+    <div
+      ref={bar}
+      className="absolute inset-x-0 bottom-0 z-10 flex items-center overflow-hidden"
+      style={{
+        height: size.bar || '10%',
+        background: ticker.bg,
+        color: readableOn(ticker.bg),
+      }}
+    >
+      <span ref={text} className="inline-block px-[1.5vw] font-semibold whitespace-nowrap" style={{ fontSize: size.font || '3.5vh' }}>
+        {ticker.text}
+      </span>
+    </div>
   )
 }
 

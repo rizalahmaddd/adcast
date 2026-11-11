@@ -13,6 +13,8 @@ const clock = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-dig
 const date = new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
 
 export const formatDate = (ms: number) => date.format(ms)
+/** Formats a `YYYY-MM-DD` calendar day (validity dates) the same way as timestamps. */
+export const formatDay = (day: string) => date.format(new Date(`${day}T00:00:00`))
 export const formatRupiah = (amount: number) => `Rp ${amount.toLocaleString('id-ID')}`
 export const formatDateTime = (ms: number) => dateTime.format(ms)
 export const formatClock = (ms: number) => clock.format(ms)

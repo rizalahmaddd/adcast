@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { CITIES } from '../../shared/cities'
 import { clockLabel, todaysPrayers } from '../../shared/prayer'
-import { TIMEZONES, type Timezone } from '../../shared/types'
+import { TICKER_SPEEDS, TIMEZONES, type Timezone } from '../../shared/types'
 import { api, can, useBranches, useDevices, useMe, type Branch, type Device } from '../lib/api'
 import { screenState, STATE_COLOR, STATE_LABEL } from '../lib/format'
 import { Button, Check, Empty, Failed, Input, Loading, Modal, PageHeader, Select, useAction } from '../ui'
@@ -191,7 +191,12 @@ function DeviceDialog({ device, branches, onClose }: { device: Device; branches:
   const { run, busy } = useAction()
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const body = Object.fromEntries(new FormData(e.currentTarget))
+    const form = new FormData(e.currentTarget)
+    const body = {
+      name: form.get('name'),
+      branchId: form.get('branchId'),
+      rotation: Number(form.get('rotation')),
+    }
     if (await run(() => api('PATCH', `/api/devices/${device.id}`, body), 'Layar diperbarui')) onClose()
   }
   return (
@@ -200,6 +205,16 @@ function DeviceDialog({ device, branches, onClose }: { device: Device; branches:
         <Input label="Nama layar" name="name" defaultValue={device.name} required maxLength={80} autoFocus />
         <Select label="Cabang" name="branchId" defaultValue={device.branchId} required>
           <BranchOptions branches={branches} />
+        </Select>
+        <Select
+          label="Orientasi layar"
+          name="rotation"
+          defaultValue={String(device.rotation)}
+          hint="Untuk TV yang dipasang berdiri. Tampilan diputar di TV, file tidak diolah ulang."
+        >
+          <option value="0">Mendatar (normal)</option>
+          <option value="90">Tegak, putar 90°</option>
+          <option value="270">Tegak, putar 270°</option>
         </Select>
         <Button type="submit" variant="primary" busy={busy}>
           Simpan
@@ -219,10 +234,16 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
   const [city, setCity] = useState(saved?.city && saved.city in CITIES ? saved.city : saved?.lat != null ? OTHER_CITY : 'Jakarta')
   const [lat, setLat] = useState(String(saved?.lat ?? ''))
   const [lng, setLng] = useState(String(saved?.lng ?? ''))
+  const savedTicker = branch?.ticker
+  const [tickerOn, setTickerOn] = useState(savedTicker?.enabled ?? false)
+  const [tickerText, setTickerText] = useState(savedTicker?.text ?? '')
+  const [tickerSpeed, setTickerSpeed] = useState(savedTicker?.speed ?? 120)
+  const [tickerBg, setTickerBg] = useState(savedTicker?.bg ?? '#000000')
 
   const custom = city === OTHER_CITY
   const place = custom ? ([Number(lat), Number(lng)] as const) : CITIES[city]
   const valid = !custom || (lat !== '' && lng !== '' && Math.abs(place[0]) <= 90 && Math.abs(place[1]) <= 180)
+  const tickerValid = !tickerOn || !!tickerText.trim()
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -237,6 +258,12 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
         lng: enabled ? place[1] : (saved?.lng ?? null),
         pause: Number(form.get('pause') ?? saved?.pause ?? 10),
         jumat: Number(form.get('jumat') ?? saved?.jumat ?? 45),
+      },
+      ticker: {
+        enabled: tickerOn,
+        text: tickerOn ? tickerText.trim() : null,
+        speed: tickerSpeed,
+        bg: tickerBg,
       },
     }
     const ok = await run(
@@ -314,7 +341,49 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
           )}
         </div>
 
-        <Button type="submit" variant="primary" busy={busy} disabled={enabled && !valid}>
+        <div className="grid gap-3 border-t border-line pt-3">
+          <Check
+            label="Teks berjalan di bawah tayangan"
+            checked={tickerOn}
+            onChange={(e) => setTickerOn(e.target.checked)}
+          />
+          {tickerOn && (
+            <>
+              <Input
+                label="Teks"
+                value={tickerText}
+                onChange={(e) => setTickerText(e.target.value)}
+                maxLength={200}
+                placeholder="Promo hari ini, jam buka, atau pengumuman"
+                hint="Berjalan di semua layar cabang ini. Bisa diganti tanpa membuat video baru."
+                required
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Kecepatan" value={tickerSpeed} onChange={(e) => setTickerSpeed(Number(e.target.value))}>
+                  {TICKER_SPEEDS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </Select>
+                <div className="grid content-start gap-1.5">
+                  <label htmlFor="ticker-bg" className="text-sm font-semibold">
+                    Warna latar
+                  </label>
+                  <input
+                    id="ticker-bg"
+                    type="color"
+                    value={tickerBg}
+                    onChange={(e) => setTickerBg(e.target.value)}
+                    className="h-11 w-16 cursor-pointer rounded-md border border-line bg-surface p-1"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <Button type="submit" variant="primary" busy={busy} disabled={(enabled && !valid) || !tickerValid}>
           Simpan
         </Button>
       </form>

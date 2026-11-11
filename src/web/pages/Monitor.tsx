@@ -1,11 +1,11 @@
-import { Pause, Play, Send, Square } from 'lucide-react'
-import { useState } from 'react'
+import { Megaphone, Pause, Play, Send, Square } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import type { Target } from '../../shared/types'
-import { ScreenTile, SendDialog } from '../components'
-import { api, can, useBranches, useDevices, useMe, useNotices, type Device } from '../lib/api'
+import { ScreenTile, SendDialog, TargetPicker, targetReady } from '../components'
+import { api, can, useAnnouncement, useBranches, useDevices, useMe, useNotices, type Device } from '../lib/api'
 import { formatAgo, formatDateTime, screenState, STATE_COLOR, STATE_LABEL, type ScreenState } from '../lib/format'
-import { Button, Empty, Failed, Loading, Modal, PageHeader, useAction } from '../ui'
+import { Button, Empty, Failed, Field, Loading, Modal, PageHeader, useAction } from '../ui'
 
 const ACTION_DONE = { pause: 'Tayangan dijeda', resume: 'Tayangan dilanjutkan', stop: 'Tayangan dihentikan' }
 
@@ -47,10 +47,19 @@ export default function Monitor() {
   const devices = useDevices()
   const branches = useBranches()
   const notices = useNotices()
+  const announcement = useAnnouncement()
+  const { run } = useAction()
   const [sending, setSending] = useState<Target | null>(null)
+  const [announcing, setAnnouncing] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
 
   const mayBroadcast = can(me.data, 'broadcast')
+  const mayAnnounce = mayBroadcast && me.data?.tenant.plan !== 'free'
+
+  const stopAnnouncement = () => {
+    if (!confirm('Matikan pengumuman darurat dan kembalikan tayangan semula di layar?')) return
+    run(() => api('DELETE', '/api/announcements'), 'Pengumuman darurat dimatikan')
+  }
 
   if (devices.isPending || branches.isPending) return <Loading what="status layar" />
   if (devices.error || branches.error) {
@@ -79,6 +88,17 @@ export default function Monitor() {
           all.length > 0 && (
             <>
               <Controls target={{ type: 'all', ids: [] }} devices={all} />
+              {announcement.data
+                ? mayBroadcast && (
+                    <Button variant="danger" onClick={stopAnnouncement}>
+                      <Megaphone className="size-4" aria-hidden /> Matikan pengumuman
+                    </Button>
+                  )
+                : mayAnnounce && (
+                    <Button onClick={() => setAnnouncing(true)}>
+                      <Megaphone className="size-4" aria-hidden /> Pengumuman darurat
+                    </Button>
+                  )}
               <Button variant="primary" onClick={() => setSending({ type: 'all', ids: [] })}>
                 <Send className="size-4" aria-hidden /> Kirim tayangan
               </Button>
@@ -86,6 +106,22 @@ export default function Monitor() {
           )
         }
       />
+
+      {announcement.data && (
+        <div
+          role="alert"
+          className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-bad/50 bg-bad/10 px-4 py-3"
+        >
+          <p className="min-w-0">
+            <span className="font-semibold">Pengumuman darurat aktif:</span> {announcement.data.text}
+          </p>
+          {mayBroadcast && (
+            <Button small variant="danger" onClick={stopAnnouncement}>
+              Matikan
+            </Button>
+          )}
+        </div>
+      )}
 
       {latestNotice && Date.now() - latestNotice.createdAt < 86_400_000 && (
         <p role="status" className="mb-6 rounded-md border border-warn/50 bg-warn/10 px-4 py-3">
@@ -146,6 +182,7 @@ export default function Monitor() {
       )}
 
       {sending && <SendDialog presetTarget={sending} onClose={() => setSending(null)} />}
+      {announcing && <AnnouncementDialog onClose={() => setAnnouncing(false)} />}
 
       {opened && (
         <Modal title={opened.name} onClose={() => setOpenId(null)}>
@@ -161,6 +198,63 @@ export default function Monitor() {
         </Modal>
       )}
     </>
+  )
+}
+
+function AnnouncementDialog({ onClose }: { onClose: () => void }) {
+  const { run, busy } = useAction()
+  const [text, setText] = useState('')
+  const [bg, setBg] = useState('#b91c1c')
+  const [target, setTarget] = useState<Target>({ type: 'all', ids: [] })
+
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const res = await run(
+      () => api<{ screens: number }>('POST', '/api/announcements', { text: text.trim(), bg, target }),
+      (r) => `Pengumuman tampil di ${r.screens} layar`,
+    )
+    if (res) onClose()
+  }
+
+  return (
+    <Modal title="Pengumuman darurat" onClose={onClose}>
+      <form onSubmit={submit} className="grid gap-5">
+        <p className="rounded-md border border-warn/50 bg-warn/10 px-3 py-2 text-sm">
+          Menimpa layar yang dipilih dengan pesan besar. Tayangan yang sedang berjalan tidak hilang dan lanjut lagi saat
+          pengumuman dimatikan.
+        </p>
+        <Field label="Isi pengumuman">
+          {(id) => (
+            <textarea
+              id={id}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              required
+              maxLength={400}
+              rows={3}
+              placeholder="Contoh: Toko tutup lebih awal pukul 20.00"
+              className="w-full rounded-md border border-line bg-surface px-3 py-2 text-[0.95rem] text-ink"
+            />
+          )}
+        </Field>
+        <div className="grid content-start gap-1.5">
+          <label htmlFor="announcement-bg" className="text-sm font-semibold">
+            Warna latar
+          </label>
+          <input
+            id="announcement-bg"
+            type="color"
+            value={bg}
+            onChange={(e) => setBg(e.target.value)}
+            className="h-11 w-16 cursor-pointer rounded-md border border-line bg-surface p-1"
+          />
+        </div>
+        <TargetPicker value={target} onChange={setTarget} />
+        <Button type="submit" variant="primary" busy={busy} disabled={!text.trim() || !targetReady(target)}>
+          Tampilkan sekarang
+        </Button>
+      </form>
+    </Modal>
   )
 }
 

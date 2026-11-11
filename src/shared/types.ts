@@ -34,6 +34,28 @@ export type CmdItem = {
   duration: number | null
 }
 
+/** One line of text scrolling along the bottom of the screen. */
+export type Ticker = {
+  text: string
+  /** Pixels per second. */
+  speed: number
+  bg: string
+}
+
+export const TICKER_SPEEDS = [
+  { value: 60, label: 'Lambat' },
+  { value: 120, label: 'Sedang' },
+  { value: 200, label: 'Cepat' },
+] as const
+
+export type DeviceRotation = 0 | 90 | 270
+
+export type Announcement = {
+  id: string
+  text: string
+  bg: string
+}
+
 export type Cmd = {
   id: string
   name: string
@@ -43,6 +65,8 @@ export type Cmd = {
   paused: boolean
   pausedAt?: number
   scheduleId?: string
+  // Overrides the branch's running text for this broadcast.
+  ticker?: Ticker
 }
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error'
@@ -68,9 +92,10 @@ export type DeviceLive = {
 export type Target = { type: 'all' | 'branch' | 'device'; ids: string[] }
 
 export type ServerToPlayer =
-  | { t: 'welcome'; now: number; cmd: Cmd | null }
+  | { t: 'welcome'; now: number; cmd: Cmd | null; ann?: Announcement | null }
   | { t: 'time'; c: number; s: number }
   | { t: 'cmd'; cmd: Cmd | null }
+  | { t: 'announcement'; a: Announcement | null }
   | { t: 'revoked' }
   // Branch or tenant settings changed; the player fetches its info again.
   | { t: 'refresh' }

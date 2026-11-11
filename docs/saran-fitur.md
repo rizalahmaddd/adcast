@@ -2,6 +2,8 @@
 
 Catatan 11 November 2026. Urutan di bawah adalah urutan yang saya sarankan untuk dikerjakan: paling berguna bagi pelanggan dan paling murah dibangun lebih dulu.
 
+Nomor 1 sampai 4 sudah dikerjakan di branch `dev`.
+
 ## Layak dikerjakan
 
 ### 1. Teks berjalan

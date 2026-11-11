@@ -40,9 +40,13 @@ Request routing is declared in `wrangler.jsonc`: `/api/*` and `/media/*` always 
 
 **Schedules.** Start and end times are local to each branch (WIB, WITA, WIT). The tenant's Durable Object sets an alarm for the next event.
 
-## Media, prayer pause, and statistics
+## Media, overlays, and statistics
 
 - **Photos**: JPG, PNG, and WebP work alongside videos, uploaded (paid plans, scaled to 1920 px in the browser) or by https link (all plans). Each photo has its own time on screen, 10 seconds by default.
+- **Content validity**: media can carry an optional start and end calendar date. Outside that range the item is left out when a playlist is assembled, so a finished promo stops on its own. A schedule uses each branch's local date; a manual broadcast uses the WIB date. If every item is out of range the schedule leaves its screens idle instead of replaying the last item.
+- **Running text**: one scrolling line along the bottom of the screen, configured per branch and overridable per broadcast. It travels with the command and the TV draws it in CSS, so no extra file is stored and every plan gets it. The player sizes the bar from the screen, so it also fits a rotated display.
+- **Portrait screens**: each screen can be rotated 90° or 270°. The TV rotates its own stage in CSS; files are never re-encoded.
+- **Emergency announcement**: one message and background colour per business, stored in the `announcements` table apart from the current command. The hub pushes it to the targeted screens and they cover whatever is playing with large text. Clearing it sends `null` and the TVs rejoin the running timeline where it should be. Available from Pro (and during the trial), but clearing is always allowed in case a plan lapses while the message is up.
 - **Prayer pause**: per branch, off by default. Pick a city (or enter coordinates) and how long to pause; TVs in that branch show a prayer notice at each of the five times and resume on their own. Times are computed on the TV with the Kemenag criteria (`src/shared/prayer.ts`), so the pause also happens offline. Friday midday has its own, longer pause.
 - **Statistics**: every TV reports its online time and seconds played per item every 10 minutes. `/statistik` summarises all screens, `/layar/:id` shows one screen with daily charts and its content ranking, and both export a play report as CSV. History reaches back 7 days on the free plan, 30 on trial and Pro, 90 on Bisnis.
 

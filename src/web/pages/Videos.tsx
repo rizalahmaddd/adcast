@@ -4,12 +4,13 @@ import { Link } from 'react-router'
 import { directVideoLink, isYoutubeLink } from '../../shared/links'
 import { PLANS } from '../../shared/plans'
 import { isImageMime } from '../../shared/types'
+import { calendarDay } from '../../shared/validity'
 import { SendDialog, thumbUrl } from '../components'
 import { api, can, useMe, useMedia, type Media } from '../lib/api'
 import { CloudImport } from '../lib/cloud'
-import { formatBytes, formatDate, formatDuration } from '../lib/format'
+import { formatBytes, formatDate, formatDay, formatDuration } from '../lib/format'
 import { isImageFile, probeImageLink, probeLink, uploadImage, uploadVideo, type UploadStage } from '../lib/upload'
-import { Button, Empty, Failed, FormError, Input, Loading, Modal, PageHeader, useAction, useToast } from '../ui'
+import { Button, cx, Empty, Failed, FormError, Input, Loading, Modal, PageHeader, useAction, useToast } from '../ui'
 
 type Job = { id: number; name: string; stage: UploadStage | { stage: 'fetching'; progress: number }; error?: string }
 export type Incoming = { name: string; load: () => Promise<Blob> }
@@ -79,6 +80,7 @@ export default function Videos() {
   const stores = rules.maxStorage > 0
   const items = media.data.items.filter((m) => m.status !== 'uploading')
   const count = media.data.items.filter((m) => m.status !== 'failed').length
+  const today = calendarDay(Date.now())
 
   return (
     <>
@@ -218,6 +220,13 @@ export default function Videos() {
                       {m.height ? `, ${m.height}p` : ''}
                     </p>
                   )}
+                  {!failed && (m.startDate || m.endDate) && (
+                    <p className={cx('text-sm', m.endDate && m.endDate < today ? 'font-medium text-warn' : 'text-muted')}>
+                      {m.endDate && m.endDate < today
+                        ? `Masa tayang berakhir ${formatDay(m.endDate)}`
+                        : `Tayang ${m.startDate ? formatDay(m.startDate) : 'sekarang'} – ${m.endDate ? formatDay(m.endDate) : 'seterusnya'}`}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {mayBroadcast && !failed && !locked && (
@@ -355,11 +364,16 @@ function RenameDialog({ media, onClose }: { media: Media; onClose: () => void })
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    const body = { title: form.get('title'), duration: image ? Number(form.get('duration')) : undefined }
+    const body = {
+      title: form.get('title'),
+      duration: image ? Number(form.get('duration')) : undefined,
+      startDate: String(form.get('startDate') ?? '') || null,
+      endDate: String(form.get('endDate') ?? '') || null,
+    }
     if (await run(() => api('PATCH', `/api/media/${media.id}`, body), 'Perubahan disimpan')) onClose()
   }
   return (
-    <Modal title={image ? 'Ubah foto' : 'Ubah judul'} onClose={onClose}>
+    <Modal title={image ? 'Ubah foto' : 'Ubah media'} onClose={onClose}>
       <form onSubmit={submit} className="grid gap-4">
         <Input label="Judul" name="title" defaultValue={media.title} required maxLength={200} autoFocus />
         {image && (
@@ -374,6 +388,16 @@ function RenameDialog({ media, onClose }: { media: Media; onClose: () => void })
             hint="Berapa lama foto ini di layar sebelum pindah ke item berikutnya."
           />
         )}
+        <div className="grid gap-3 border-t border-line pt-3">
+          <p className="text-sm font-semibold">Masa berlaku</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Mulai tayang" name="startDate" type="date" defaultValue={media.startDate ?? ''} />
+            <Input label="Berhenti tayang" name="endDate" type="date" defaultValue={media.endDate ?? ''} />
+          </div>
+          <p className="text-sm text-muted">
+            Boleh dikosongkan. Di luar tanggal ini media dilewati saat playlist disusun, jadi promo berhenti sendiri.
+          </p>
+        </div>
         <Button type="submit" variant="primary" busy={busy}>
           Simpan
         </Button>

@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 import type {
+  Announcement,
   Cmd,
   DeviceLive,
   PlayerToServer,
@@ -161,7 +162,13 @@ export class TenantHub extends DurableObject<Bindings> {
     }
     const now = Date.now()
     if (msg.t === 'hello') {
-      const out: ServerToPlayer = { t: 'welcome', now, cmd: this.desired(att.deviceId) }
+      const active = await this.activeAnnouncement()
+      const out: ServerToPlayer = {
+        t: 'welcome',
+        now,
+        cmd: this.desired(att.deviceId),
+        ann: active?.deviceIds.has(att.deviceId) ? active.ann : null,
+      }
       ws.send(JSON.stringify(out))
     } else if (msg.t === 'time') {
       const out: ServerToPlayer = { t: 'time', c: msg.c, s: now }
@@ -228,6 +235,37 @@ export class TenantHub extends DurableObject<Bindings> {
     const text = JSON.stringify({ t: 'refresh' } satisfies ServerToPlayer)
     for (const ws of this.ctx.getWebSockets()) {
       if ((ws.deserializeAttachment() as Attachment).kind === 'player') ws.send(text)
+    }
+  }
+
+  private async activeAnnouncement(): Promise<{ ann: Announcement; deviceIds: Set<string> } | null> {
+    const tenantId = this.meta('tenantId')
+    if (!tenantId) return null
+    const row = await this.env.DB.prepare(
+      'SELECT id, text, bg, target_type, target_ids FROM announcements WHERE tenant_id = ?',
+    )
+      .bind(tenantId)
+      .first<{ id: string; text: string; bg: string; target_type: Target['type']; target_ids: string }>()
+    if (!row) return null
+    const devices = await resolveTarget(this.env.DB, tenantId, {
+      type: row.target_type,
+      ids: JSON.parse(row.target_ids) as string[],
+    })
+    return {
+      ann: { id: row.id, text: row.text, bg: row.bg },
+      deviceIds: new Set(devices.map((d) => d.id)),
+    }
+  }
+
+  /** Pushes the current announcement to every connected TV; screens outside the target get it cleared. */
+  async announcementsChanged(tenantId: string) {
+    this.setMeta('tenantId', tenantId)
+    const active = await this.activeAnnouncement()
+    for (const ws of this.ctx.getWebSockets()) {
+      const att = ws.deserializeAttachment() as Attachment
+      if (att.kind !== 'player') continue
+      const a = active?.deviceIds.has(att.deviceId) ? active.ann : null
+      ws.send(JSON.stringify({ t: 'announcement', a } satisfies ServerToPlayer))
     }
   }
 
@@ -382,8 +420,15 @@ export class TenantHub extends DurableObject<Bindings> {
         if (!last) continue
 
         if (last.type === 'start') {
-          const content = await resolveContent(this.env.DB, tenantId, s.content_type, s.content_id)
-          if (!content?.items.length) continue
+          const content = await resolveContent(this.env.DB, tenantId, s.content_type, s.content_id, offset)
+          if (!content?.items.length) {
+            // Everything is outside its validity dates: leave the screens idle rather than replaying an old promo.
+            if (content) {
+              const mine = ids.filter((id) => this.desired(id)?.scheduleId === s.id)
+              if (mine.length) await this.control(mine, 'stop')
+            }
+            continue
+          }
           await this.dispatch(tenantId, ids, {
             id: newId(),
             name: content.name,

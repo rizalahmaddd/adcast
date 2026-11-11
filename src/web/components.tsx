@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import type { Target } from '../shared/types'
+import { TICKER_SPEEDS, type Target } from '../shared/types'
 import { api, useBranches, useDevices, useMedia, usePlaylists, type Device, type Media } from './lib/api'
 import { formatAgo, screenState, STATE_COLOR, STATE_LABEL } from './lib/format'
-import { Button, Check, cx, Modal, Select, useAction } from './ui'
+import { Button, Check, cx, Input, Modal, Select, useAction } from './ui'
 
 export function thumbUrl(m: Media): string | null {
   if (m.kind === 'youtube') return `https://i.ytimg.com/vi/${m.youtubeId}/mqdefault.jpg`
@@ -175,12 +175,19 @@ export function SendDialog({
 }) {
   const [content, setContent] = useState(preset?.value ?? '')
   const [target, setTarget] = useState<Target>(presetTarget ?? { type: 'all', ids: [] })
+  const [tickerOn, setTickerOn] = useState(false)
+  const [tickerText, setTickerText] = useState('')
+  const [tickerSpeed, setTickerSpeed] = useState(120)
+  const [tickerBg, setTickerBg] = useState('#000000')
   const { run, busy } = useAction()
+
+  const tickerReady = !tickerOn || !!tickerText.trim()
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    const ticker = tickerOn ? { text: tickerText.trim(), speed: tickerSpeed, bg: tickerBg } : undefined
     const res = await run(
-      () => api<{ screens: number }>('POST', '/api/broadcasts', { ...splitContent(content), target }),
+      () => api<{ screens: number }>('POST', '/api/broadcasts', { ...splitContent(content), target, ticker }),
       (r) => `Tayangan dikirim ke ${r.screens} layar`,
     )
     if (res) onClose()
@@ -191,10 +198,53 @@ export function SendDialog({
       <form onSubmit={submit} className="grid gap-5">
         {!preset && <ContentSelect value={content} onChange={setContent} />}
         <TargetPicker value={target} onChange={setTarget} />
+
+        <div className="grid gap-3 rounded-md border border-line p-3">
+          <Check
+            label="Teks berjalan khusus kiriman ini"
+            checked={tickerOn}
+            onChange={(e) => setTickerOn(e.target.checked)}
+          />
+          {tickerOn && (
+            <>
+              <Input
+                label="Teks"
+                value={tickerText}
+                onChange={(e) => setTickerText(e.target.value)}
+                maxLength={200}
+                placeholder="Promo hari ini, jam buka, atau pengumuman"
+                hint="Menggantikan teks berjalan cabang selama tayangan ini."
+                required
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Kecepatan" value={tickerSpeed} onChange={(e) => setTickerSpeed(Number(e.target.value))}>
+                  {TICKER_SPEEDS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </Select>
+                <div className="grid content-start gap-1.5">
+                  <label htmlFor="send-ticker-bg" className="text-sm font-semibold">
+                    Warna latar
+                  </label>
+                  <input
+                    id="send-ticker-bg"
+                    type="color"
+                    value={tickerBg}
+                    onChange={(e) => setTickerBg(e.target.value)}
+                    className="h-11 w-16 cursor-pointer rounded-md border border-line bg-surface p-1"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
         <p className="text-sm text-muted">
           TV yang sedang online mulai memutar bersamaan dalam beberapa detik. TV yang offline memutarnya begitu tersambung lagi.
         </p>
-        <Button type="submit" variant="primary" busy={busy} disabled={!content || !targetReady(target)}>
+        <Button type="submit" variant="primary" busy={busy} disabled={!content || !targetReady(target) || !tickerReady}>
           Kirim sekarang
         </Button>
       </form>

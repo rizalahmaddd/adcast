@@ -57,17 +57,23 @@ playerApi.get('/me', async (c) => {
       .bind(device.tenant_id)
       .first<{ name: string; brand_color: string; logo_version: number }>(),
     c.env.DB.prepare(
-      `SELECT b.timezone, b.prayer_enabled, b.prayer_lat, b.prayer_lng, b.prayer_pause, b.prayer_jumat
+      `SELECT d.rotation, b.timezone, b.prayer_enabled, b.prayer_lat, b.prayer_lng, b.prayer_pause, b.prayer_jumat,
+              b.ticker_enabled, b.ticker_text, b.ticker_speed, b.ticker_bg
        FROM devices d JOIN branches b ON b.id = d.branch_id WHERE d.id = ?`,
     )
       .bind(device.id)
       .first<{
+        rotation: number
         timezone: string
         prayer_enabled: number
         prayer_lat: number | null
         prayer_lng: number | null
         prayer_pause: number
         prayer_jumat: number
+        ticker_enabled: number
+        ticker_text: string | null
+        ticker_speed: number
+        ticker_bg: string
       }>(),
   ])
   const offset = TIMEZONES[branch?.timezone as Timezone]?.offset ?? 7
@@ -75,8 +81,11 @@ playerApi.get('/me', async (c) => {
     branch?.prayer_enabled && branch.prayer_lat !== null && branch.prayer_lng !== null
       ? { lat: branch.prayer_lat, lng: branch.prayer_lng, offset, pause: branch.prayer_pause, jumat: branch.prayer_jumat }
       : null
+  const ticker =
+    branch?.ticker_enabled && branch.ticker_text ? { text: branch.ticker_text, speed: branch.ticker_speed, bg: branch.ticker_bg } : null
   return c.json({
-    device: { id: device.id, name: device.name, offset },
+    device: { id: device.id, name: device.name, offset, rotation: branch?.rotation ?? 0 },
+    ticker,
     prayer,
     tenant: {
       name: tenant?.name ?? '',

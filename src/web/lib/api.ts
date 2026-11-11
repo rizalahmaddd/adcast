@@ -1,7 +1,15 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import type { Order, Plan, PlanRules } from '../../shared/plans'
-import type { DeviceLive, Permission, ServerToDashboard, StatsReport, Target, Timezone } from '../../shared/types'
+import type {
+  DeviceLive,
+  DeviceRotation,
+  Permission,
+  ServerToDashboard,
+  StatsReport,
+  Target,
+  Timezone,
+} from '../../shared/types'
 
 export class ApiError extends Error {
   constructor(
@@ -64,8 +72,17 @@ export type BranchPrayer = {
   pause: number
   jumat: number
 }
-export type Branch = { id: string; name: string; timezone: Timezone; prayer: BranchPrayer }
-export type Device = { id: string; name: string; branchId: string; createdAt: number; covered: boolean; live?: DeviceLive }
+export type BranchTicker = { enabled: boolean; text: string | null; speed: number; bg: string }
+export type Branch = { id: string; name: string; timezone: Timezone; prayer: BranchPrayer; ticker: BranchTicker }
+export type Device = {
+  id: string
+  name: string
+  branchId: string
+  rotation: DeviceRotation
+  createdAt: number
+  covered: boolean
+  live?: DeviceLive
+}
 export type Media = {
   id: string
   kind: 'file' | 'youtube' | 'link'
@@ -81,6 +98,8 @@ export type Media = {
   height: number | null
   hasThumb: number
   error: string | null
+  startDate: string | null
+  endDate: string | null
   createdAt: number
 }
 export type Playlist = { id: string; name: string; mediaIds: string[] }
@@ -99,6 +118,14 @@ export type Role = { id: string; name: string; isOwner: boolean; permissions: Pe
 export type User = { id: string; name: string; email: string; totpEnabled: number; roleId: string }
 export type AuditEntry = { id: string; userName: string | null; action: string; detail: string | null; createdAt: number }
 export type Notice = { id: string; title: string; body: string; createdAt: number }
+export type AnnouncementState = {
+  id: string
+  text: string
+  bg: string
+  target: Target
+  createdAt: number
+  createdByName: string | null
+}
 export type Usage = Record<
   'maxDevices' | 'maxBranches' | 'maxUsers' | 'maxMedia' | 'maxPlaylists' | 'maxSchedules' | 'maxStorage',
   number
@@ -137,6 +164,8 @@ export const useStats = (days: number) =>
     placeholderData: keepPreviousData,
   })
 export const useNotices = () => useQuery({ queryKey: ['notices'], queryFn: get<Notice[]>('/api/notifications') })
+export const useAnnouncement = () =>
+  useQuery({ queryKey: ['announcement'], queryFn: get<AnnouncementState | null>('/api/announcements') })
 
 /** Device list kept fresh by the hub's WebSocket, with a slow poll as a safety net. */
 export function useDevices() {

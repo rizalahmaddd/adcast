@@ -15,7 +15,7 @@ const key = (tenantId: string, mediaId: string) => `t/${tenantId}/m/${mediaId}`
 export const thumbKey = (tenantId: string, mediaId: string) => `t/${tenantId}/thumb/${mediaId}`
 
 const COLUMNS = `id, kind, title, status, source, youtube_id AS youtubeId, url, mime, size, duration, width, height,
-  has_thumb AS hasThumb, error, created_at AS createdAt`
+  has_thumb AS hasThumb, error, start_date AS startDate, end_date AS endDate, created_at AS createdAt`
 
 app.get('/', async (c) => {
   const { tenantId } = c.get('auth')
@@ -304,14 +304,36 @@ app.post('/link', requirePerm('media'), async (c) => {
   return c.json({ id })
 })
 
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal harus berformat TTTT-BB-HH')
+
 app.patch('/:id', requirePerm('media'), async (c) => {
-  const body = await readBody(c, z.object({ title, duration: z.number().int().min(3).max(3600).optional() }))
+  const body = await readBody(
+    c,
+    z.object({
+      title,
+      duration: z.number().int().min(3).max(3600).optional(),
+      startDate: day.nullable().optional(),
+      endDate: day.nullable().optional(),
+    }),
+  )
+  if (body.startDate && body.endDate && body.startDate > body.endDate) {
+    throw fail(400, 'Tanggal mulai harus sebelum tanggal selesai')
+  }
   // Only a photo's time on screen is ours to set; a video's length is a fact about the file.
   await c.env.DB.prepare(
-    `UPDATE media SET title = ?, duration = CASE WHEN ? IS NOT NULL AND mime LIKE 'image/%' THEN ? ELSE duration END
+    `UPDATE media SET title = ?, duration = CASE WHEN ? IS NOT NULL AND mime LIKE 'image/%' THEN ? ELSE duration END,
+       start_date = ?, end_date = ?
      WHERE id = ? AND tenant_id = ?`,
   )
-    .bind(body.title, body.duration ?? null, body.duration ?? null, c.req.param('id'), c.get('auth').tenantId)
+    .bind(
+      body.title,
+      body.duration ?? null,
+      body.duration ?? null,
+      body.startDate ?? null,
+      body.endDate ?? null,
+      c.req.param('id'),
+      c.get('auth').tenantId,
+    )
     .run()
   return c.json({ ok: true })
 })

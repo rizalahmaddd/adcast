@@ -1,4 +1,5 @@
 import { IMAGE_SECONDS, isImageMime, TIMEZONES, type CmdItem, type Target, type Timezone } from '../../shared/types'
+import { calendarDay, withinValidity } from '../../shared/validity'
 import { coveredDevices, tenantPlan } from './plan'
 
 type MediaRow = {
@@ -9,6 +10,8 @@ type MediaRow = {
   url: string | null
   mime: string | null
   duration: number | null
+  start_date: string | null
+  end_date: string | null
 }
 
 const toItem = (m: MediaRow): CmdItem => ({
@@ -25,29 +28,42 @@ export type Content = {
   items: CmdItem[]
   /** Uploaded videos left out because the tenant's plan no longer includes stored video. */
   withheld: number
+  /** Media left out because today is outside their start and end dates. */
+  expired: number
 }
 
-async function playable(db: D1Database, tenantId: string, name: string, rows: MediaRow[]): Promise<Content> {
-  const stored = rows.some((m) => m.kind === 'file')
+async function playable(
+  db: D1Database,
+  tenantId: string,
+  name: string,
+  rows: MediaRow[],
+  today: string,
+): Promise<Content> {
+  const fresh = rows.filter((m) => withinValidity(m.start_date, m.end_date, today))
+  const stored = fresh.some((m) => m.kind === 'file')
   const allowed = !stored || (await tenantPlan(db, tenantId)).rules.maxStorage > 0
-  const kept = allowed ? rows : rows.filter((m) => m.kind !== 'file')
-  return { name, items: kept.map(toItem), withheld: rows.length - kept.length }
+  const kept = allowed ? fresh : fresh.filter((m) => m.kind !== 'file')
+  return { name, items: kept.map(toItem), withheld: fresh.length - kept.length, expired: rows.length - fresh.length }
 }
 
+/** `offsetHours` decides which calendar day counts as today, so a schedule uses its branch's local date. */
 export async function resolveContent(
   db: D1Database,
   tenantId: string,
   type: 'media' | 'playlist',
   id: string,
+  offsetHours = 7,
 ): Promise<Content | null> {
+  const today = calendarDay(Date.now(), offsetHours)
   if (type === 'media') {
     const m = await db
       .prepare(
-        "SELECT id, kind, title, youtube_id, url, mime, duration FROM media WHERE id = ? AND tenant_id = ? AND status = 'ready'",
+        `SELECT id, kind, title, youtube_id, url, mime, duration, start_date, end_date
+         FROM media WHERE id = ? AND tenant_id = ? AND status = 'ready'`,
       )
       .bind(id, tenantId)
       .first<MediaRow>()
-    return m ? playable(db, tenantId, m.title, [m]) : null
+    return m ? playable(db, tenantId, m.title, [m], today) : null
   }
   const p = await db
     .prepare('SELECT name FROM playlists WHERE id = ? AND tenant_id = ?')
@@ -56,13 +72,13 @@ export async function resolveContent(
   if (!p) return null
   const { results } = await db
     .prepare(
-      `SELECT m.id, m.kind, m.title, m.youtube_id, m.url, m.mime, m.duration
+      `SELECT m.id, m.kind, m.title, m.youtube_id, m.url, m.mime, m.duration, m.start_date, m.end_date
        FROM playlist_items i JOIN media m ON m.id = i.media_id
        WHERE i.playlist_id = ? AND m.status = 'ready' ORDER BY i.position`,
     )
     .bind(id)
     .all<MediaRow>()
-  return playable(db, tenantId, p.name, results)
+  return playable(db, tenantId, p.name, results, today)
 }
 
 export type TargetDevice = { id: string; branch_id: string; offset: number }
