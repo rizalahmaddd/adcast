@@ -1,0 +1,62 @@
+name: Deploy dev
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Dev keeps its own Worker, D1 database and R2 bucket, so it never touches production data.
+      # The config lives in the development environment's secrets; see docs/deployment.md.
+      - name: Write Wrangler config
+        env:
+          WRANGLER_CONFIG_DEV: ${{ secrets.WRANGLER_CONFIG_DEV }}
+        run: |
+          if [ -z "$WRANGLER_CONFIG_DEV" ]; then
+            echo "::error::The development environment needs the WRANGLER_CONFIG_DEV secret. See docs/deployment.md."
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$WRANGLER_CONFIG_DEV" > wrangler.jsonc
+
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      - name: Apply D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm exec wrangler d1 migrations apply adcast-dev --remote --config wrangler.jsonc
+
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm exec wrangler deploy

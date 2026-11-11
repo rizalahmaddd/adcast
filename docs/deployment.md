@@ -90,6 +90,93 @@ pnpm exec wrangler tail
 - Buka `/paket`: kartu paket muncul, dan tombol beli aktif hanya kalau `QRIS_PAYLOAD` valid.
 - Buka `https://<domain>/player` di TV atau HP: halaman player harus memuat dan menampilkan kode pairing.
 
+## Deploy otomatis dari GitHub
+
+Dua workflow di `.github/workflows/` men-deploy sendiri setiap ada push:
+
+| Branch | Worker | Domain | Database |
+| --- | --- | --- | --- |
+| `main` | `adcast` | `adcast.biz.id` | D1 `adcast`, R2 `adcast-media` |
+| `dev` | `adcast-dev` | `dev.adcast.biz.id` | D1 `adcast-dev`, R2 `adcast-media-dev` |
+
+Dev sengaja memakai Worker, D1, dan R2 sendiri. Kalau hanya domainnya yang berbeda, data dev akan masuk ke database produksi.
+
+Setelah tes lolos, workflow menjalankan migrasi D1 lalu deploy. Wrangler otomatis memakai config hasil build (`.wrangler/deploy/config.json`), jadi aset statis dan Worker ikut naik bersama.
+
+### Sekali saja: siapkan resource dev
+
+```sh
+pnpm exec wrangler d1 create adcast-dev
+pnpm exec wrangler r2 bucket create adcast-media-dev
+```
+
+Salin config produksi lalu ubah bagian dev:
+
+```sh
+cp wrangler.jsonc wrangler.dev.jsonc
+```
+
+- `name` → `adcast-dev`
+- `routes` → `dev.adcast.biz.id`
+- `d1_databases` → database `adcast-dev` beserta `database_id` barunya
+- `r2_buckets` → `adcast-media-dev`
+- `triggers.crons` boleh dihapus supaya dev tidak ikut menjalankan cron produksi
+- blok `migrations` Durable Object tetap dibiarkan
+
+`wrangler.dev.jsonc` sudah masuk `.gitignore`, jadi tidak ikut ter-commit.
+
+### Sekali saja: isi secret per environment
+
+Workflow memakai GitHub Environment (`production` dan `development`) supaya kredensial produksi tidak bisa dibaca job dev. Buat dulu kedua environment di **Settings → Environments → New environment**.
+
+Secret yang dipakai:
+
+| Environment | Secret | Isi |
+| --- | --- | --- |
+| `production` | `CLOUDFLARE_API_TOKEN` | Token dengan izin Workers Scripts: Edit, D1: Edit, R2: Edit, Workers Routes: Edit, DNS: Edit |
+| `production` | `CLOUDFLARE_ACCOUNT_ID` | Account id Cloudflare |
+| `production` | `WRANGLER_CONFIG_MAIN` | Isi file `wrangler.jsonc` produksi |
+| `development` | `CLOUDFLARE_API_TOKEN` | Token terpisah bila bisa, dengan izin yang sama |
+| `development` | `CLOUDFLARE_ACCOUNT_ID` | Account id Cloudflare |
+| `development` | `WRANGLER_CONFIG_DEV` | Isi file `wrangler.dev.jsonc` |
+
+Lewat `gh`:
+
+```sh
+gh secret set CLOUDFLARE_API_TOKEN --env production --body "<token-produksi>"
+gh secret set CLOUDFLARE_ACCOUNT_ID --env production --body "<account-id>"
+gh secret set WRANGLER_CONFIG_MAIN --env production < wrangler.jsonc
+
+gh secret set CLOUDFLARE_API_TOKEN --env development --body "<token-dev>"
+gh secret set CLOUDFLARE_ACCOUNT_ID --env development --body "<account-id>"
+gh secret set WRANGLER_CONFIG_DEV --env development < wrangler.dev.jsonc
+```
+
+Kalau `wrangler.jsonc` atau `wrangler.dev.jsonc` diubah (misalnya ganti domain atau database), perbarui secret environment yang sesuai. Workflow membaca config dari secret, bukan dari repo.
+
+### Sekali saja: secret milik Worker
+
+Secret runtime tidak ikut di-deploy oleh workflow. Setel manual per environment:
+
+```sh
+# Produksi
+pnpm exec wrangler secret put ADMIN_EMAILS
+pnpm exec wrangler secret put QRIS_PAYLOAD
+
+# Dev — sengaja tanpa QRIS_PAYLOAD supaya pembelian paket mati
+pnpm exec wrangler secret put ADMIN_EMAILS --config wrangler.dev.jsonc
+```
+
+Secret lain (`GOOGLE_*`, `DROPBOX_APP_KEY`, `ONEDRIVE_CLIENT_ID`, `VAPID_*`) diisi dengan cara yang sama bila dipakai di environment tersebut.
+
+### Setelah itu
+
+- Push ke `main` → deploy produksi.
+- Push ke `dev` → deploy dev.
+- Workflow juga bisa dijalankan manual lewat tab **Actions**. Deploy produksi tetap hanya mau berjalan dari branch `main`.
+- Untuk mengunci produksi, buka **Settings → Environments → production** lalu tambahkan required reviewer.
+- `dev.adcast.biz.id` harus berada di zone Cloudflare yang sama; Wrangler membuat record DNS dan sertifikatnya sendiri.
+
 ## Catatan operasional
 
 - **Cron harian**: `triggers.crons` di `wrangler.jsonc` berjalan 19:00 UTC (02:00 WIB) untuk menghapus upload milik paket yang berakhir lebih dari 30 hari lalu.

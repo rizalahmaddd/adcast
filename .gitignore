@@ -13,9 +13,10 @@ promo/
 # Local product notes.
 kebutuhan.txt
 
-# The real Worker config stays local: it carries the account id, the D1 id and the domain.
-# Copy wrangler.example.jsonc to wrangler.jsonc for local development and deployment.
+# The real Worker configs stay local: they carry the account id, the D1 ids and the domains.
+# Copy wrangler.example.jsonc to wrangler.jsonc, and make wrangler.dev.jsonc for the dev Worker.
 wrangler.jsonc
+wrangler.*.jsonc
 !wrangler.example.jsonc
 
 .env
