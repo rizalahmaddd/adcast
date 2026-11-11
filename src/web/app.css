@@ -1,0 +1,73 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-on-brand: var(--on-brand);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-off: var(--off);
+  --color-screen: #12110f;
+}
+
+:root {
+  --bg: #f6f4ef;
+  --surface: #fffdf9;
+  --sunken: #ece8df;
+  --line: #d9d3c6;
+  --ink: #1c1b18;
+  --muted: #5c584f;
+  --brand: #0f766e;
+  --on-brand: #ffffff;
+  --ok: #15803d;
+  --warn: #a54b06;
+  --bad: #b91c1c;
+  --off: #66625a;
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --bg: #141412;
+  --surface: #1e1d1a;
+  --sunken: #292723;
+  --line: #3a3832;
+  --ink: #f1eee7;
+  --muted: #aaa598;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --off: #948f82;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--ink);
+  width: 1.05rem;
+  height: 1.05rem;
+}

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The real wrangler.jsonc is gitignored; the build only needs the bindings to exist.
+      - run: sed 's/<your-d1-database-id>/00000000-0000-0000-0000-000000000000/' wrangler.example.jsonc > wrangler.jsonc
+
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

@@ -1,0 +1,24 @@
+node_modules
+dist
+.wrangler
+.dev.vars
+*.tsbuildinfo
+.DS_Store
+.playwright-mcp
+.commandcode
+
+# Local promo-video workspace (Blender scenes, renders, 227 MB).
+promo/
+
+# Local product notes.
+kebutuhan.txt
+
+# The real Worker config stays local: it carries the account id, the D1 id and the domain.
+# Copy wrangler.example.jsonc to wrangler.jsonc for local development and deployment.
+wrangler.jsonc
+!wrangler.example.jsonc
+
+.env
+.env.*
+!.env.example
+*.local

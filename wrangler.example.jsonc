@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "adcast",
+  // Uncomment and fill in your Cloudflare account id when the login has more than one account.
+  // "account_id": "<your-cloudflare-account-id>",
+
+  // Uncomment to serve the dashboard from your own domain (needs the zone on the same account).
+  // "routes": [{ "pattern": "adcast.example.com", "custom_domain": true }],
+
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // 02:00 WIB: delete uploads of plans that ended more than 30 days ago.
+  "triggers": { "crons": ["0 19 * * *"] },
+
+  // Payment is a secret, never a var: wrangler secret put QRIS_PAYLOAD
+
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/media/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "adcast",
+      "database_id": "<your-d1-database-id>",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "adcast-media" }],
+  "durable_objects": {
+    "bindings": [{ "name": "HUB", "class_name": "TenantHub" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TenantHub"] }]
+}

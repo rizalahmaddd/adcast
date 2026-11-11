@@ -1,0 +1,49 @@
+name: Laporan Bug
+description: Laporkan perilaku yang tidak sesuai
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Terima kasih sudah meluangkan waktu. Untuk celah keamanan, jangan pakai form ini — ikuti [SECURITY.md](https://github.com/rizalahmaddd/adcast/blob/main/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Apa yang terjadi?
+      description: Jelaskan perilaku yang kamu lihat dan apa yang kamu harapkan.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Langkah reproduksi
+      placeholder: |
+        1. Buka /paket
+        2. Klik "Beli paket Pro"
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Bagian yang bermasalah
+      options:
+        - Dashboard
+        - Pemutar TV (/player)
+        - API / autentikasi
+        - Upload dan konversi video
+        - Jadwal dan statistik
+        - Pembayaran dan paket
+        - Deploy / konfigurasi
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Lingkungan
+      description: Contoh: Chrome 140 di Android TV Box, atau Node 22 + `pnpm dev` lokal.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log atau tangkapan layar
+      description: Tempel pesan error, output `wrangler tail`, atau tautan gambar.

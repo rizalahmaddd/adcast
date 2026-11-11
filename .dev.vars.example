@@ -1,0 +1,24 @@
+# Copy to .dev.vars for local development. In production set each with: wrangler secret put NAME
+
+# Google sign-in and Google Drive import (same OAuth client).
+# Authorized redirect URI: https://<your-domain>/api/auth/google/callback
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# Only for the Drive picker (API key with Picker API enabled).
+GOOGLE_API_KEY=
+
+# Cloud import pickers (optional).
+DROPBOX_APP_KEY=
+ONEDRIVE_CLIENT_ID=
+
+# Web Push for offline alerts. Generate with: node scripts/gen-vapid.mjs
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:you@example.com
+
+# Comma-separated emails of the operators who confirm plan payments at /pembayaran.
+ADMIN_EMAILS=
+
+# The merchant's static QRIS payload (the text behind the QR image). Without it the pages
+# hide the "beli paket" button and no order can be created.
+QRIS_PAYLOAD=

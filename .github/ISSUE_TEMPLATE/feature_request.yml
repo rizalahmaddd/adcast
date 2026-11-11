@@ -1,0 +1,32 @@
+name: Usulan Fitur
+description: Ide perbaikan atau fitur baru untuk AdCast
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Masalah yang ingin diselesaikan
+      description: Ceritakan situasi nyata yang membuat fitur ini dibutuhkan.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Usulan solusi
+      description: Bagaimana bentuknya di dashboard atau di TV?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatif yang sudah dicoba
+      description: Termasuk cara manual yang sekarang dipakai.
+  - type: dropdown
+    id: plan
+    attributes:
+      label: Cocok untuk paket mana?
+      options:
+        - Semua paket
+        - Pro ke atas
+        - Bisnis
+        - Belum tahu
