@@ -295,6 +295,55 @@ assert.equal(
   90,
 )
 
+// Device groups: a zone can be targeted across branches
+const group = ok(await owner('POST', '/api/groups', { name: 'Kasir', color: '#0f766e' }), 'group create')
+ok(await owner('PATCH', `/api/devices/${device.id}`, { name: 'TV Lobi', branchId: branch.id, groupId: group.id }), 'group join')
+assert.equal(ok(await owner('GET', '/api/devices'), 'devices group').find((d) => d.id === device.id).groupId, group.id)
+assert.equal(ok(await owner('GET', '/api/groups'), 'groups list').find((g) => g.id === group.id).devices, 1)
+ok(
+  await owner('POST', '/api/broadcasts', {
+    contentType: 'media',
+    contentId: up.id,
+    target: { type: 'group', ids: [group.id] },
+  }),
+  'broadcast to group',
+)
+
+// Split layout: the side panel travels inside the command and reaches the TV
+ok(
+  await owner('POST', '/api/broadcasts', {
+    contentType: 'media',
+    contentId: up.id,
+    target: { type: 'device', ids: [device.id] },
+    layout: 'split',
+    side: { kind: 'text', title: 'Menu', text: 'Nasi goreng', bg: '#0f172a', color: '#ffffff' },
+  }),
+  'split broadcast',
+)
+const split = (await again.next((m) => m.t === 'cmd' && m.cmd?.layout === 'split', 'split cmd')).cmd
+assert.equal(split.side.text, 'Nasi goreng')
+
+// Opening hours are handed to the TV, which decides the closed screen on its own clock
+ok(
+  await owner('PATCH', `/api/branches/${branch.id}`, {
+    name: 'Pusat',
+    timezone: 'Asia/Jakarta',
+    hours: { enabled: true, open: '08:00', close: '21:00', text: 'Sampai jumpa' },
+  }),
+  'branch hours',
+)
+assert.deepEqual(
+  ok(await tv('GET', '/api/player/me', undefined, { authorization: `Bearer ${token}` }), 'player me hours').hours,
+  { enabled: true, open: '08:00', close: '21:00', text: 'Sampai jumpa' },
+)
+
+// Deleting a group releases its screens instead of deleting them
+ok(await owner('DELETE', `/api/groups/${group.id}`), 'group delete')
+assert.equal(
+  ok(await owner('GET', '/api/devices'), 'devices after group delete').find((d) => d.id === device.id).groupId,
+  null,
+)
+
 // Content validity: an expired playlist is skipped entirely
 ok(
   await owner('PATCH', `/api/media/${up.id}`, { title: 'Promo Siang', duration: 99, startDate: null, endDate: '2020-01-01' }),

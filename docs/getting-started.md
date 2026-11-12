@@ -62,8 +62,8 @@ pnpm dev
 Buka <http://localhost:5173>.
 
 1. Buka `/daftar` dan buat usaha pertama. Akun pertama di sebuah usaha menjadi pemilik.
-2. Buka `/player` di tab atau jendela lain. Halaman itu menampilkan kode 6 karakter — itulah calon TV.
-3. Di dashboard, buka **Layar**, masukkan kode tadi. TV langsung menerima token dan siap dipakai.
+2. Buka `/player` di tab atau jendela lain. Halaman itu menampilkan QR dan kode 6 karakter — itulah calon TV.
+3. Dari HP, pindai QR tersebut (atau buka **Layar** di dashboard dan masukkan kodenya). TV langsung menerima token dan siap dipakai.
 4. Tambahkan video di **Video** (YouTube atau tautan https paling cepat, karena paket Gratis tidak menyimpan file), susun **Playlist**, lalu kirim ke layar.
 
 ## 6. Menjalankan pemeriksaan

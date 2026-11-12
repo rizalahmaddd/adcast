@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import qrcode from 'qrcode-generator'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { closedNow } from '../../shared/hours'
 import { clockLabel, prayerNow, todaysPrayers, type PrayerConfig } from '../../shared/prayer'
 import type {
   Announcement,
   Cmd,
   CmdItem,
+  OpeningHours,
   PlayerStatus,
   PlayerToServer,
   ServerToPlayer,
@@ -20,6 +23,7 @@ type Info = {
   device: { id: string; name: string; offset?: number; rotation?: number }
   ticker?: Ticker | null
   prayer?: PrayerConfig | null
+  hours?: OpeningHours | null
   tenant: { name: string; brandColor: string; logoUrl: string | null }
 }
 
@@ -67,6 +71,14 @@ function Pairing({ onPaired }: { onPaired: (token: string) => void }) {
   const [code, setCode] = useState<string | null>(null)
   const [offline, setOffline] = useState(false)
 
+  const qr = useMemo(() => {
+    if (!code) return null
+    const gen = qrcode(0, 'M')
+    gen.addData(`${location.origin}/layar?pair=${code}`)
+    gen.make()
+    return gen.createDataURL(10)
+  }, [code])
+
   useEffect(() => {
     let stopped = false
     let timer: ReturnType<typeof setTimeout>
@@ -104,16 +116,27 @@ function Pairing({ onPaired }: { onPaired: (token: string) => void }) {
   }, [onPaired])
 
   return (
-    <div className="grid h-full place-items-center p-[5vw] text-center">
-      <div>
-        <p className="text-[2.2vw] font-semibold text-white/75">Hubungkan TV ini ke AdCast</p>
-        <p className="mt-[3vw] font-mono text-[11vw] leading-none font-bold tracking-[0.12em]" aria-live="polite">
-          {code ?? '······'}
-        </p>
-        <p className="mx-auto mt-[3vw] max-w-[60vw] text-[1.9vw] text-white/75">
-          Buka dashboard AdCast di HP atau komputer, pilih menu Layar, tekan Hubungkan TV, lalu ketik kode di atas.
-        </p>
-        {offline && <p className="mt-[2vw] text-[1.7vw] font-semibold text-amber-300">Tidak ada koneksi internet. Mencoba lagi.</p>}
+    <div className="grid h-full place-items-center p-[4vw]">
+      <div className="flex flex-wrap items-center justify-center gap-[6vw]">
+        {qr && (
+          <img
+            src={qr}
+            alt="QR untuk menghubungkan TV ini"
+            className="size-[23vw] rounded-[1vw] bg-white p-[1vw]"
+            style={{ imageRendering: 'pixelated' }}
+          />
+        )}
+        <div className="max-w-[42vw]">
+          <p className="text-[2.2vw] font-semibold text-white/75">Hubungkan TV ini ke AdCast</p>
+          <p className="mt-[2vw] font-mono text-[7vw] leading-none font-bold tracking-[0.12em]" aria-live="polite">
+            {code ?? '······'}
+          </p>
+          <p className="mt-[2vw] text-[1.8vw] text-white/75">
+            Pindai QR dengan kamera HP, atau buka dashboard AdCast, pilih menu Layar, tekan Hubungkan TV, lalu ketik kode
+            di atas.
+          </p>
+          {offline && <p className="mt-[2vw] text-[1.7vw] font-semibold text-amber-300">Tidak ada koneksi internet. Mencoba lagi.</p>}
+        </div>
       </div>
     </div>
   )
@@ -140,6 +163,8 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
   const [imageSrc, setImageSrc] = useState<string | null>(null)
   const [praying, setPraying] = useState<{ label: string; until: string } | null>(null)
   const [ann, setAnn] = useState<Announcement | null>(null)
+  const [closed, setClosed] = useState<{ open: string; text: string | null } | null>(null)
+  const [sideSrc, setSideSrc] = useState<string | null>(null)
 
   const video = useRef<HTMLVideoElement>(null)
   const ytHost = useRef<HTMLDivElement>(null)
@@ -147,8 +172,8 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
   const ws = useRef<WebSocket | null>(null)
   const clockOffset = useRef(0)
   const handlers = useRef({ ended: () => {}, failed: (_message: string) => {} })
-  const latest = useRef({ view, cmd, cached, connected, info })
-  latest.current = { view, cmd, cached, connected, info }
+  const latest = useRef({ view, cmd, cached, connected, info, closed })
+  latest.current = { view, cmd, cached, connected, info, closed }
   const stats = useRef({ up: 0, plays: new Map<string, number>() })
   const refresh = useRef(() => {})
 
@@ -157,11 +182,11 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
   }, [])
 
   const report = useCallback(() => {
-    const { view, cmd, cached } = latest.current
+    const { view, cmd, cached, closed } = latest.current
     send({
       t: 'state',
       state: {
-        status: STATUS[view.phase],
+        status: closed ? 'closed' : STATUS[view.phase],
         cmdId: cmd?.id,
         mediaId: view.item?.mediaId,
         title: view.item?.title,
@@ -269,6 +294,7 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
   const cmdKey = cmd ? `${cmd.id}:${cmd.paused}:${cmd.startAt}` : ''
   const prayerKey = praying?.label ?? ''
   const annKey = ann?.id ?? ''
+  const closedKey = closed?.open ?? ''
 
   // Prayer times are worked out on the TV itself, so the pause still happens without internet.
   const prayer = info?.prayer ?? null
@@ -282,6 +308,21 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
     const interval = setInterval(check, 5000)
     return () => clearInterval(interval)
   }, [prayer])
+
+  // The TV decides this on its own clock, so the closed screen still appears when the internet is down.
+  const hours = info?.hours ?? null
+  useEffect(() => {
+    if (!hours) return setClosed(null)
+    const offset = info?.device.offset ?? 7
+    const check = () =>
+      setClosed((current) => {
+        const next = closedNow(hours, Date.now() + clockOffset.current, offset)
+        return current?.open === next?.open && current?.text === next?.text ? current : next
+      })
+    check()
+    const interval = setInterval(check, 15_000)
+    return () => clearInterval(interval)
+  }, [hours, info?.device.offset])
 
   useEffect(() => {
     const tick = setInterval(() => {
@@ -339,6 +380,15 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
       stopYouTube()
       setImageSrc(null)
       setView({ phase: 'idle' })
+      return
+    }
+
+    if (closedKey) {
+      el.pause()
+      stopYouTube()
+      setImageSrc(null)
+      setView({ phase: 'paused' })
+      // Opening time ends the pause; this effect runs again and rejoins the shared timeline.
       return
     }
 
@@ -499,13 +549,13 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
     }
     // cmdKey captures every field of cmd that changes playback.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cmdKey, token, prayerKey, annKey])
+  }, [cmdKey, token, prayerKey, annKey, closedKey])
 
   useEffect(() => {
     report()
     const interval = setInterval(report, 20_000)
     return () => clearInterval(interval)
-  }, [view, cached, connected, report])
+  }, [view, cached, connected, closed, report])
 
   useEffect(() => {
     const unmute = () => {
@@ -542,18 +592,35 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
   const showVideo = view.item?.kind === 'file' && view.phase !== 'idle'
   const showYouTube = view.item?.kind === 'youtube' && view.phase !== 'idle'
   const rotation = info?.device.rotation ?? 0
+  const portrait = rotation === 90 || rotation === 270
   const ticker = cmd?.ticker ?? info?.ticker ?? null
   const showTicker =
     !!ticker?.text &&
     !praying &&
     !ann &&
+    !closed &&
     (view.phase === 'playing' || view.phase === 'waiting' || view.phase === 'paused')
+  const side = cmd?.layout === 'split' && cmd.side ? cmd.side : null
+  const splitView = !!side && (view.phase === 'playing' || view.phase === 'paused' || view.phase === 'waiting')
+
+  // Same cache path as the main items, so the panel photo survives an internet drop.
+  const sideImageId = side?.kind === 'image' ? side.mediaId : null
+  useEffect(() => {
+    if (!sideImageId) return setSideSrc(null)
+    let cancelled = false
+    void sourceFor({ mediaId: sideImageId, kind: 'image', title: '', duration: null }, token).then((src) => {
+      if (!cancelled) setSideSrc(src)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [sideImageId, token])
 
   return (
     <div
       className="absolute overflow-hidden bg-black"
       style={
-        rotation
+        portrait
           ? {
               top: '50%',
               left: '50%',
@@ -561,25 +628,47 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
               height: '100vw',
               transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
             }
-          : { inset: 0 }
+          : { inset: 0, transform: rotation === 180 ? 'rotate(180deg)' : undefined }
       }
     >
-      <video
-        ref={video}
-        playsInline
-        preload="auto"
-        onEnded={() => handlers.current.ended()}
-        onError={() => video.current?.src && handlers.current.failed('Video tidak bisa diputar')}
-        className={`absolute inset-0 size-full bg-black object-contain ${showVideo ? '' : 'invisible'}`}
-      />
-      <div ref={ytHost} className={`pointer-events-none absolute inset-0 ${showYouTube ? '' : 'invisible'}`} />
-      {imageSrc && view.item?.kind === 'image' && (
-        <img
-          src={imageSrc}
-          alt=""
-          onError={() => handlers.current.failed('Foto tidak bisa ditampilkan')}
-          className="absolute inset-0 size-full bg-black object-contain"
+      <div className={splitView ? 'absolute inset-y-0 left-0 w-[64%] overflow-hidden' : 'absolute inset-0 overflow-hidden'}>
+        <video
+          ref={video}
+          playsInline
+          preload="auto"
+          onEnded={() => handlers.current.ended()}
+          onError={() => video.current?.src && handlers.current.failed('Video tidak bisa diputar')}
+          className={`absolute inset-0 size-full bg-black object-contain ${showVideo ? '' : 'invisible'}`}
         />
+        <div ref={ytHost} className={`pointer-events-none absolute inset-0 ${showYouTube ? '' : 'invisible'}`} />
+        {imageSrc && view.item?.kind === 'image' && (
+          <img
+            src={imageSrc}
+            alt=""
+            onError={() => handlers.current.failed('Foto tidak bisa ditampilkan')}
+            className="absolute inset-0 size-full bg-black object-contain"
+          />
+        )}
+      </div>
+
+      {splitView && side && (
+        <div className="absolute inset-y-0 right-0 w-[36%] overflow-hidden bg-black">
+          {side.kind === 'image' ? (
+            <img
+              src={sideSrc ?? `/media/${side.mediaId}?t=${encodeURIComponent(token)}`}
+              alt=""
+              className="size-full object-cover"
+            />
+          ) : (
+            <div
+              className="flex size-full flex-col justify-center gap-[2vw] p-[3vw]"
+              style={{ background: side.bg, color: side.color }}
+            >
+              {side.title && <p className="text-[2.4vw] font-bold leading-tight">{side.title}</p>}
+              <p className="text-[3.2vw] font-semibold leading-snug whitespace-pre-wrap">{side.text}</p>
+            </div>
+          )}
+        </div>
       )}
 
       {view.phase === 'idle' && (
@@ -608,7 +697,23 @@ function Screen({ token, onRevoked }: { token: string; onRevoked: () => void }) 
           </div>
         </div>
       )}
-      {view.phase === 'paused' && !praying && <Note>Dijeda</Note>}
+      {closed && (
+        <div
+          className="absolute inset-0 z-10 grid place-items-center p-[5vw] text-center"
+          style={{ background: brand, color: readableOn(brand) }}
+        >
+          <div>
+            {info?.tenant.logoUrl && (
+              <img src={info.tenant.logoUrl} alt="" className="mx-auto mb-[2.5vw] h-[12vw] object-contain" />
+            )}
+            <p className="text-[2.6vw] font-semibold">{info?.tenant.name ?? 'AdCast'}</p>
+            <p className="mt-[2vw] text-[7vw] leading-none font-bold">Tutup</p>
+            <p className="mt-[2.5vw] text-[2.4vw]">{closed.text ?? `Kami buka lagi pukul ${closed.open}`}</p>
+            <p className="mt-[2vw] text-[2vw] font-semibold tabular-nums">{formatClock(now)}</p>
+          </div>
+        </div>
+      )}
+      {view.phase === 'paused' && !praying && !closed && <Note>Dijeda</Note>}
       {view.phase === 'error' && <Note>{view.error ?? 'Video tidak bisa diputar'}. Mencoba lagi.</Note>}
       {muted && view.phase === 'playing' && <Note>Tekan OK pada remote untuk menyalakan suara</Note>}
 

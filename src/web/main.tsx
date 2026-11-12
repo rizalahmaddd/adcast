@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import './app.css'
 import { ApiError } from './lib/api'
+import { capturePairCode } from './lib/pairing'
 import { AuthPage } from './pages/Auth'
 import { Shell } from './Shell'
 import { ToastProvider } from './ui'
@@ -31,6 +32,8 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+capturePairCode()
 
 const stored = localStorage.getItem('adcast_theme')
 document.documentElement.dataset.theme =

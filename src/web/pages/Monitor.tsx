@@ -2,8 +2,8 @@ import { Megaphone, Pause, Play, Send, Square } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import type { Target } from '../../shared/types'
-import { ScreenTile, SendDialog, TargetPicker, targetReady } from '../components'
-import { api, can, useAnnouncement, useBranches, useDevices, useMe, useNotices, type Device } from '../lib/api'
+import { nowPlaying, ScreenTile, SendDialog, TargetPicker, targetReady } from '../components'
+import { api, can, useAnnouncement, useBranches, useDevices, useMe, useMedia, useNotices, type Device, type Media } from '../lib/api'
 import { formatAgo, formatDateTime, screenState, STATE_COLOR, STATE_LABEL, type ScreenState } from '../lib/format'
 import { Button, Empty, Failed, Field, Loading, Modal, PageHeader, useAction } from '../ui'
 
@@ -46,6 +46,7 @@ export default function Monitor() {
   const me = useMe()
   const devices = useDevices()
   const branches = useBranches()
+  const media = useMedia()
   const notices = useNotices()
   const announcement = useAnnouncement()
   const { run } = useAction()
@@ -172,7 +173,7 @@ export default function Monitor() {
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                     {list.map((d) => (
-                      <ScreenTile key={d.id} device={d} onClick={() => setOpenId(d.id)} />
+                      <ScreenTile key={d.id} device={d} media={media.data?.items} onClick={() => setOpenId(d.id)} />
                     ))}
                   </div>
                 </section>
@@ -188,6 +189,7 @@ export default function Monitor() {
         <Modal title={opened.name} onClose={() => setOpenId(null)}>
           <ScreenDetail
             device={opened}
+            media={media.data?.items}
             branchName={branches.data.find((b) => b.id === opened.branchId)?.name ?? ''}
             mayBroadcast={mayBroadcast}
             onSend={() => {
@@ -260,17 +262,20 @@ function AnnouncementDialog({ onClose }: { onClose: () => void }) {
 
 function ScreenDetail({
   device,
+  media,
   branchName,
   mayBroadcast,
   onSend,
 }: {
   device: Device
+  media: Media[] | undefined
   branchName: string
   mayBroadcast: boolean
   onSend: () => void
 }) {
   const state = screenState(device.live)
   const live = device.live
+  const now = nowPlaying(device, media)
   const rows: [string, string | undefined][] = [
     ['Cabang', branchName],
     ['Tayangan yang dikirim', live?.desired?.name ?? 'Tidak ada'],
@@ -283,6 +288,24 @@ function ScreenDetail({
   return (
     <div className="grid gap-5">
       <p className={`text-lg font-bold ${STATE_COLOR[state]}`}>{STATE_LABEL[state]}</p>
+      {now?.src && (
+        <figure className="grid gap-1.5">
+          <div className="relative overflow-hidden rounded-md bg-screen">
+            <img src={now.src} alt="" className="aspect-video w-full object-cover" />
+            <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-3 pt-10 pb-2">
+              <p className="text-sm font-semibold text-white">{now.title}</p>
+              {now.progress != null && (
+                <span aria-hidden className="mt-1 block h-1 rounded bg-white/25">
+                  <span className="block h-full rounded bg-white" style={{ width: `${now.progress}%` }} />
+                </span>
+              )}
+            </figcaption>
+          </div>
+          <p className="text-sm text-muted">
+            Pratinjau konten yang sedang diputar, bukan tangkapan layar TV. Teks berjalan dan tampilan lain di TV tidak ikut terlihat.
+          </p>
+        </figure>
+      )}
       <dl className="grid gap-3">
         {rows
           .filter(([, value]) => value)

@@ -4,6 +4,15 @@ Catatan 11 November 2026. Urutan di bawah adalah urutan yang saya sarankan untuk
 
 Nomor 1 sampai 4 sudah dikerjakan di branch `dev`.
 
+## Pembeda produk ✅
+
+Keempat pembeda di bawah sudah dikerjakan di branch `dev`:
+
+1. **Grup layar (zona).** Layar bisa dikumpulkan lintas cabang (kasir, ruang tunggu) dan dikirimi tayangan sebagai satu tujuan. Dipakai juga oleh jadwal, pengumuman darurat, dan kontrol jeda/hentikan.
+2. **Jam operasional dan layar tutup.** Cabang menyimpan jam buka/tutup dan pesan penutup. Di luar jam itu TV menampilkan layar tutup berlogo dan melaporkan status `closed`, lalu kembali sendiri saat jam buka. Keputusan diambil di TV dengan jam cabang, jadi tetap jalan saat internet putus.
+3. **Bagi layar.** Kiriman bisa memakai dua pertiga layar untuk video dan sepertiga untuk panel teks berwarna atau foto dari Media. Foto panel ikut disimpan di TV untuk pemutaran offline.
+4. **Slide siap pakai per jenis usaha.** Template kuliner, klinik, salon, bengkel, dan umum dirender di browser menjadi foto 1920×1080, lalu masuk ke Media seperti foto biasa.
+
 ## Layak dikerjakan
 
 ### 1. Teks berjalan ✅

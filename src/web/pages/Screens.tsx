@@ -1,23 +1,42 @@
-import { ChartNoAxesColumn, Plus } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
+import { ChartNoAxesColumn, Layers, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useSearchParams } from 'react-router'
 import { CITIES } from '../../shared/cities'
 import { clockLabel, todaysPrayers } from '../../shared/prayer'
 import { TICKER_SPEEDS, TIMEZONES, type Timezone } from '../../shared/types'
-import { api, can, useBranches, useDevices, useMe, type Branch, type Device } from '../lib/api'
+import { nowPlaying } from '../components'
+import { api, can, useBranches, useDevices, useGroups, useMe, useMedia, type Branch, type Device, type Group } from '../lib/api'
 import { screenState, STATE_COLOR, STATE_LABEL } from '../lib/format'
+import { takePairCode } from '../lib/pairing'
 import { Button, Check, Empty, Failed, Input, Loading, Modal, PageHeader, Select, useAction } from '../ui'
 
 export default function Screens() {
   const me = useMe()
   const devices = useDevices()
   const branches = useBranches()
+  const groups = useGroups()
+  const media = useMedia()
   const { run } = useAction()
+  const [params, setParams] = useSearchParams()
   const [pairing, setPairing] = useState(false)
+  const [pairCode, setPairCode] = useState('')
   const [editing, setEditing] = useState<Device | null>(null)
+  const [groupsOpen, setGroupsOpen] = useState(false)
   const [branchForm, setBranchForm] = useState<Branch | 'new' | null>(null)
 
   const mayManage = can(me.data, 'device')
+
+  useEffect(() => {
+    const code = takePairCode()
+    if (!code || !mayManage) return
+    setPairCode(code)
+    setPairing(true)
+    if (params.has('pair')) {
+      const next = new URLSearchParams(params)
+      next.delete('pair')
+      setParams(next, { replace: true })
+    }
+  }, [])
 
   if (devices.isPending || branches.isPending) return <Loading what="daftar layar" />
   if (devices.error || branches.error) {
@@ -45,7 +64,16 @@ export default function Screens() {
           mayManage && (
             <>
               <Button onClick={() => setBranchForm('new')}>Tambah cabang</Button>
-              <Button variant="primary" onClick={() => setPairing(true)}>
+              <Button onClick={() => setGroupsOpen(true)}>
+                <Layers className="size-4" aria-hidden /> Grup layar
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setPairCode('')
+                  setPairing(true)
+                }}
+              >
                 <Plus className="size-4" aria-hidden /> Hubungkan TV
               </Button>
             </>
@@ -85,16 +113,30 @@ export default function Screens() {
                 <ul className="divide-y divide-line">
                   {list.map((d) => {
                     const state = screenState(d.live)
+                    const now = nowPlaying(d, media.data?.items)
                     return (
                       <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                        <div className="min-w-0">
-                          <p className="font-semibold">{d.name}</p>
-                          <p className={`text-sm font-semibold ${STATE_COLOR[state]}`}>{STATE_LABEL[state]}</p>
-                          {!d.covered && (
-                            <p className="text-sm font-medium text-warn">
-                              Melebihi batas {limit} layar paket {me.data?.tenant.limits.label}, tidak menerima tayangan baru
-                            </p>
+                        <div className="flex min-w-0 items-center gap-3">
+                          {now?.src && (
+                            <img src={now.src} alt="" loading="lazy" className="h-10 w-16 shrink-0 rounded object-cover" />
                           )}
+                          <div className="min-w-0">
+                            <p className="flex flex-wrap items-center gap-2 font-semibold">
+                              {d.name}
+                              {d.groupId && groups.data?.find((g) => g.id === d.groupId) && (
+                                <span className="rounded bg-sunken px-1.5 py-0.5 text-xs font-semibold text-muted">
+                                  {groups.data.find((g) => g.id === d.groupId)!.name}
+                                </span>
+                              )}
+                            </p>
+                            <p className={`text-sm font-semibold ${STATE_COLOR[state]}`}>{STATE_LABEL[state]}</p>
+                            {now && <p className="truncate text-sm text-muted">{now.title}</p>}
+                            {!d.covered && (
+                              <p className="text-sm font-medium text-warn">
+                                Melebihi batas {limit} layar paket {me.data?.tenant.limits.label}, tidak menerima tayangan baru
+                              </p>
+                            )}
+                          </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <Link
@@ -127,14 +169,32 @@ export default function Screens() {
       {devices.data.length === 0 && (
         <div className="mt-8">
           <Empty title="Cara menghubungkan TV pertama">
-            Di Android TV atau Android TV Box, buka browser lalu kunjungi {playerUrl}. TV akan menampilkan kode 6 karakter.
-            Masukkan kode itu lewat tombol Hubungkan TV.
+            Di Android TV atau Android TV Box, buka browser lalu kunjungi {playerUrl}. TV akan menampilkan QR dan kode 6
+            karakter. Pindai QR dengan kamera HP, atau masukkan kodenya lewat tombol Hubungkan TV.
           </Empty>
         </div>
       )}
 
-      {pairing && <PairDialog branches={branches.data} playerUrl={playerUrl} onClose={() => setPairing(false)} />}
-      {editing && <DeviceDialog device={editing} branches={branches.data} onClose={() => setEditing(null)} />}
+      {pairing && (
+        <PairDialog
+          branches={branches.data}
+          playerUrl={playerUrl}
+          defaultCode={pairCode}
+          onClose={() => {
+            setPairing(false)
+            setPairCode('')
+          }}
+        />
+      )}
+      {editing && (
+        <DeviceDialog
+          device={editing}
+          branches={branches.data}
+          groups={groups.data ?? []}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {groupsOpen && <GroupDialog groups={groups.data ?? []} onClose={() => setGroupsOpen(false)} />}
       {branchForm && <BranchDialog branch={branchForm === 'new' ? null : branchForm} onClose={() => setBranchForm(null)} />}
     </>
   )
@@ -148,7 +208,17 @@ function BranchOptions({ branches }: { branches: Branch[] }) {
   ))
 }
 
-function PairDialog({ branches, playerUrl, onClose }: { branches: Branch[]; playerUrl: string; onClose: () => void }) {
+function PairDialog({
+  branches,
+  playerUrl,
+  defaultCode,
+  onClose,
+}: {
+  branches: Branch[]
+  playerUrl: string
+  defaultCode: string
+  onClose: () => void
+}) {
   const { run, busy } = useAction()
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -162,7 +232,7 @@ function PairDialog({ branches, playerUrl, onClose }: { branches: Branch[]; play
           <li>
             Di TV, buka browser dan kunjungi <span className="font-semibold break-all text-ink">{playerUrl}</span>
           </li>
-          <li>Ketik kode 6 karakter yang muncul di layar TV ke kolom di bawah.</li>
+          <li>Pindai QR di layar TV, atau ketik kode 6 karakter yang muncul.</li>
         </ol>
         <Input
           label="Kode di layar TV"
@@ -170,12 +240,13 @@ function PairDialog({ branches, playerUrl, onClose }: { branches: Branch[]; play
           required
           minLength={6}
           maxLength={6}
-          autoFocus
+          defaultValue={defaultCode}
+          autoFocus={!defaultCode}
           autoComplete="off"
           autoCapitalize="characters"
           className="text-center text-2xl font-bold tracking-[0.3em] uppercase"
         />
-        <Input label="Nama layar" name="name" required maxLength={80} placeholder="TV Lobi" />
+        <Input label="Nama layar" name="name" required maxLength={80} placeholder="TV Lobi" autoFocus={!!defaultCode} />
         <Select label="Cabang" name="branchId" required>
           <BranchOptions branches={branches} />
         </Select>
@@ -187,7 +258,101 @@ function PairDialog({ branches, playerUrl, onClose }: { branches: Branch[]; play
   )
 }
 
-function DeviceDialog({ device, branches, onClose }: { device: Device; branches: Branch[]; onClose: () => void }) {
+function GroupDialog({ groups, onClose }: { groups: Group[]; onClose: () => void }) {
+  const { run, busy } = useAction()
+  const [editing, setEditing] = useState<Group | null>(null)
+
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    const body = { name: form.get('name'), color: form.get('color') }
+    const done = editing ? 'Grup diperbarui' : 'Grup dibuat'
+    const ok = await run(
+      () => api(editing ? 'PATCH' : 'POST', editing ? `/api/groups/${editing.id}` : '/api/groups', body),
+      done,
+    )
+    if (ok) setEditing(null)
+  }
+
+  const remove = (group: Group) => {
+    if (!confirm(`Hapus grup "${group.name}"? Layar di dalamnya tidak ikut terhapus.`)) return
+    run(() => api('DELETE', `/api/groups/${group.id}`), 'Grup dihapus')
+  }
+
+  return (
+    <Modal title="Grup layar" onClose={onClose}>
+      <div className="grid gap-5">
+        <p className="text-sm text-muted">
+          Grup mengumpulkan layar dari cabang mana pun, misalnya semua kasir atau semua ruang tunggu, supaya bisa dikirimi
+          tayangan yang sama tanpa memilih satu per satu.
+        </p>
+
+        {groups.length > 0 && (
+          <ul className="grid gap-2">
+            {groups.map((group) => (
+              <li key={group.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line px-3 py-2">
+                <span className="flex min-w-0 items-center gap-2 font-semibold">
+                  <span aria-hidden className="size-3 shrink-0 rounded-full" style={{ background: group.color }} />
+                  <span className="truncate">{group.name}</span>
+                  <span className="text-sm font-medium text-muted">{group.devices} layar</span>
+                </span>
+                <span className="flex gap-2">
+                  <Button small onClick={() => setEditing(group)}>
+                    Ubah
+                  </Button>
+                  <Button small variant="danger" onClick={() => remove(group)} aria-label={`Hapus grup ${group.name}`}>
+                    <Trash2 className="size-4" aria-hidden />
+                  </Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <form key={editing?.id ?? 'baru'} onSubmit={submit} className="grid gap-3 border-t border-line pt-4">
+          <Input
+            label={editing ? 'Nama grup' : 'Nama grup baru'}
+            name="name"
+            defaultValue={editing?.name}
+            required
+            maxLength={80}
+            placeholder="Kasir"
+          />
+          <div className="grid content-start gap-1.5">
+            <label htmlFor="group-color" className="text-sm font-semibold">
+              Warna penanda
+            </label>
+            <input
+              id="group-color"
+              name="color"
+              type="color"
+              defaultValue={editing?.color ?? '#0f766e'}
+              className="h-11 w-16 cursor-pointer rounded-md border border-line bg-surface p-1"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button type="submit" variant="primary" busy={busy}>
+              {editing ? 'Simpan perubahan' : 'Tambah grup'}
+            </Button>
+            {editing && <Button onClick={() => setEditing(null)}>Batal</Button>}
+          </div>
+        </form>
+      </div>
+    </Modal>
+  )
+}
+
+function DeviceDialog({
+  device,
+  branches,
+  groups,
+  onClose,
+}: {
+  device: Device
+  branches: Branch[]
+  groups: Group[]
+  onClose: () => void
+}) {
   const { run, busy } = useAction()
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -195,6 +360,7 @@ function DeviceDialog({ device, branches, onClose }: { device: Device; branches:
     const body = {
       name: form.get('name'),
       branchId: form.get('branchId'),
+      groupId: form.get('groupId') || null,
       rotation: Number(form.get('rotation')),
     }
     if (await run(() => api('PATCH', `/api/devices/${device.id}`, body), 'Layar diperbarui')) onClose()
@@ -207,13 +373,27 @@ function DeviceDialog({ device, branches, onClose }: { device: Device; branches:
           <BranchOptions branches={branches} />
         </Select>
         <Select
+          label="Grup layar"
+          name="groupId"
+          defaultValue={device.groupId ?? ''}
+          hint="Untuk mengirim tayangan ke zona yang sama di beberapa cabang, misalnya semua kasir."
+        >
+          <option value="">Tanpa grup</option>
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </Select>
+        <Select
           label="Orientasi layar"
           name="rotation"
           defaultValue={String(device.rotation)}
-          hint="Untuk TV yang dipasang berdiri. Tampilan diputar di TV, file tidak diolah ulang."
+          hint="Untuk TV yang dipasang berdiri atau terbalik. Tampilan diputar di TV, file tidak diolah ulang."
         >
           <option value="0">Mendatar (normal)</option>
           <option value="90">Tegak, putar 90°</option>
+          <option value="180">Terbalik, putar 180°</option>
           <option value="270">Tegak, putar 270°</option>
         </Select>
         <Button type="submit" variant="primary" busy={busy}>
@@ -239,6 +419,11 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
   const [tickerText, setTickerText] = useState(savedTicker?.text ?? '')
   const [tickerSpeed, setTickerSpeed] = useState(savedTicker?.speed ?? 120)
   const [tickerBg, setTickerBg] = useState(savedTicker?.bg ?? '#000000')
+  const savedHours = branch?.hours
+  const [hoursOn, setHoursOn] = useState(savedHours?.enabled ?? false)
+  const [openTime, setOpenTime] = useState(savedHours?.open ?? '08:00')
+  const [closeTime, setCloseTime] = useState(savedHours?.close ?? '21:00')
+  const [closedText, setClosedText] = useState(savedHours?.text ?? '')
 
   const custom = city === OTHER_CITY
   const place = custom ? ([Number(lat), Number(lng)] as const) : CITIES[city]
@@ -264,6 +449,12 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
         text: tickerOn ? tickerText.trim() : null,
         speed: tickerSpeed,
         bg: tickerBg,
+      },
+      hours: {
+        enabled: hoursOn,
+        open: hoursOn ? openTime : null,
+        close: hoursOn ? closeTime : null,
+        text: closedText.trim() || null,
       },
     }
     const ok = await run(
@@ -379,6 +570,30 @@ function BranchDialog({ branch, onClose }: { branch: Branch | null; onClose: () 
                   />
                 </div>
               </div>
+            </>
+          )}
+        </div>
+
+        <div className="grid gap-3 border-t border-line pt-3">
+          <Check
+            label="Tampilkan layar tutup di luar jam operasional"
+            checked={hoursOn}
+            onChange={(e) => setHoursOn(e.target.checked)}
+          />
+          {hoursOn && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Jam buka" type="time" value={openTime} onChange={(e) => setOpenTime(e.target.value)} required />
+                <Input label="Jam tutup" type="time" value={closeTime} onChange={(e) => setCloseTime(e.target.value)} required />
+              </div>
+              <Input
+                label="Pesan saat tutup"
+                value={closedText}
+                onChange={(e) => setClosedText(e.target.value)}
+                maxLength={200}
+                placeholder="Kami buka lagi besok pukul 08.00"
+                hint="Kosongkan untuk memakai kalimat otomatis berisi jam buka. Untuk usaha yang tutup lewat tengah malam, isi jam tutup lebih kecil dari jam buka."
+              />
             </>
           )}
         </div>

@@ -1,4 +1,4 @@
-import { Link2, Pencil, Send, Trash2, Upload } from 'lucide-react'
+import { Link2, Pencil, Send, Sparkles, Trash2, Upload } from 'lucide-react'
 import { useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { directVideoLink, isYoutubeLink } from '../../shared/links'
@@ -6,6 +6,7 @@ import { PLANS } from '../../shared/plans'
 import { isImageMime } from '../../shared/types'
 import { calendarDay } from '../../shared/validity'
 import { SendDialog, thumbUrl } from '../components'
+import { SlideDialog } from '../SlideDialog'
 import { api, can, useMe, useMedia, type Media } from '../lib/api'
 import { CloudImport } from '../lib/cloud'
 import { formatBytes, formatDate, formatDay, formatDuration } from '../lib/format'
@@ -37,6 +38,7 @@ export default function Videos() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [youtubeOpen, setYoutubeOpen] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
+  const [slideOpen, setSlideOpen] = useState(false)
   const [sending, setSending] = useState<Media | null>(null)
   const [renaming, setRenaming] = useState<Media | null>(null)
   const [preview, setPreview] = useState<Media | null>(null)
@@ -101,6 +103,9 @@ export default function Videos() {
               </Button>
               {stores && (
                 <>
+                  <Button onClick={() => setSlideOpen(true)}>
+                    <Sparkles className="size-4" aria-hidden /> Buat slide
+                  </Button>
                   <Button variant="primary" onClick={() => fileInput.current?.click()}>
                     <Upload className="size-4" aria-hidden /> Upload video atau foto
                   </Button>
@@ -252,6 +257,14 @@ export default function Videos() {
       )}
 
       {youtubeOpen && <YoutubeDialog onClose={() => setYoutubeOpen(false)} />}
+      {slideOpen && (
+        <SlideDialog
+          onSaved={() => {
+            void media.refetch()
+          }}
+          onClose={() => setSlideOpen(false)}
+        />
+      )}
       {linkOpen && <LinkDialog onClose={() => setLinkOpen(false)} />}
       {sending && <SendDialog preset={{ value: `media:${sending.id}`, name: sending.title }} onClose={() => setSending(null)} />}
       {renaming && <RenameDialog media={renaming} onClose={() => setRenaming(null)} />}

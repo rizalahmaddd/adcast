@@ -4,6 +4,7 @@ import type { Order, Plan, PlanRules } from '../../shared/plans'
 import type {
   DeviceLive,
   DeviceRotation,
+  OpeningHours,
   Permission,
   ServerToDashboard,
   StatsReport,
@@ -73,16 +74,25 @@ export type BranchPrayer = {
   jumat: number
 }
 export type BranchTicker = { enabled: boolean; text: string | null; speed: number; bg: string }
-export type Branch = { id: string; name: string; timezone: Timezone; prayer: BranchPrayer; ticker: BranchTicker }
+export type Branch = {
+  id: string
+  name: string
+  timezone: Timezone
+  prayer: BranchPrayer
+  ticker: BranchTicker
+  hours: OpeningHours
+}
 export type Device = {
   id: string
   name: string
   branchId: string
+  groupId: string | null
   rotation: DeviceRotation
   createdAt: number
   covered: boolean
   live?: DeviceLive
 }
+export type Group = { id: string; name: string; color: string; devices: number }
 export type Media = {
   id: string
   kind: 'file' | 'youtube' | 'link'
@@ -146,6 +156,7 @@ export const useMe = () => useQuery({ queryKey: ['me'], queryFn: get<Me>('/api/a
 export const useAuthConfig = () =>
   useQuery({ queryKey: ['auth-config'], queryFn: get<{ google: boolean }>('/api/auth/config'), staleTime: 60_000 })
 export const useBranches = () => useQuery({ queryKey: ['branches'], queryFn: get<Branch[]>('/api/branches') })
+export const useGroups = () => useQuery({ queryKey: ['groups'], queryFn: get<Group[]>('/api/groups') })
 export const useMedia = () =>
   useQuery({ queryKey: ['media'], queryFn: get<{ items: Media[]; used: number }>('/api/media') })
 export const usePlaylists = () => useQuery({ queryKey: ['playlists'], queryFn: get<Playlist[]>('/api/playlists') })

@@ -9,7 +9,7 @@ import { requireAuth, requirePerm } from '../session'
 const app = new Hono<AppEnv>()
 app.use(requireAuth)
 
-const target = z.object({ type: z.enum(['all', 'branch', 'device']), ids: z.array(z.string()).max(1000) })
+const target = z.object({ type: z.enum(['all', 'branch', 'group', 'device']), ids: z.array(z.string()).max(1000) })
 const body = z.object({
   text: z.string().trim().min(1).max(400),
   bg: z.string().regex(/^#[0-9a-fA-F]{6}$/),
@@ -20,7 +20,7 @@ type Row = {
   id: string
   text: string
   bg: string
-  target_type: 'all' | 'branch' | 'device'
+  target_type: 'all' | 'branch' | 'group' | 'device'
   target_ids: string
   created_at: number
   created_by_name: string | null

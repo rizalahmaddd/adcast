@@ -93,10 +93,10 @@ export async function resolveTarget(
   const covered = forPlayback ? await coveredDevices(db, tenantId) : null
   const { results } = await db
     .prepare(
-      'SELECT d.id, d.branch_id, b.timezone FROM devices d JOIN branches b ON b.id = d.branch_id WHERE d.tenant_id = ?',
+      'SELECT d.id, d.branch_id, d.group_id, b.timezone FROM devices d JOIN branches b ON b.id = d.branch_id WHERE d.tenant_id = ?',
     )
     .bind(tenantId)
-    .all<{ id: string; branch_id: string; timezone: string }>()
+    .all<{ id: string; branch_id: string; group_id: string | null; timezone: string }>()
   const ids = new Set(target.ids)
   return results
     .filter((d) => !covered || covered.has(d.id))
@@ -104,6 +104,7 @@ export async function resolveTarget(
       (d) =>
         target.type === 'all' ||
         (target.type === 'branch' && ids.has(d.branch_id)) ||
+        (target.type === 'group' && !!d.group_id && ids.has(d.group_id)) ||
         (target.type === 'device' && ids.has(d.id)),
     )
     .map((d) => ({

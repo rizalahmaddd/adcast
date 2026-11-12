@@ -55,7 +55,11 @@ export function syncCache(cmd: Cmd | null, token: string, onChange: (count: numb
     } catch {
       return
     }
-    const wanted = new Set((cmd?.items ?? []).filter((i) => i.kind !== 'youtube' && !i.url).map((i) => i.mediaId))
+    const wanted = new Set([
+      ...(cmd?.items ?? []).filter((i) => i.kind !== 'youtube' && !i.url).map((i) => i.mediaId),
+      // The side panel photo is part of the show too; it should keep playing when the internet drops.
+      ...(cmd?.side?.kind === 'image' ? [cmd.side.mediaId] : []),
+    ])
     for (const request of await cache.keys()) {
       const id = new URL(request.url).pathname.split('/').pop()!
       if (!wanted.has(id)) {

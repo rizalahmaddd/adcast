@@ -11,7 +11,17 @@ const app = new Hono<AppEnv>()
 app.use(requireAuth)
 
 const name = z.string().trim().min(1).max(120)
-const target = z.object({ type: z.enum(['all', 'branch', 'device']), ids: z.array(z.string()).max(1000) })
+const target = z.object({ type: z.enum(['all', 'branch', 'group', 'device']), ids: z.array(z.string()).max(1000) })
+const side = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('text'),
+    title: z.string().trim().max(80).nullable(),
+    text: z.string().trim().min(1).max(300),
+    bg: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  }),
+  z.object({ kind: z.literal('image'), mediaId: z.string(), title: z.string().trim().max(80).nullable() }),
+])
 const content = { contentType: z.enum(['media', 'playlist']), contentId: z.string() }
 const ticker = z.object({
   text: z.string().trim().min(1).max(200),
@@ -107,8 +117,21 @@ app.delete('/playlists/:id', requirePerm('playlist'), async (c) => {
 })
 
 app.post('/broadcasts', requirePerm('broadcast'), async (c) => {
-  const body = await readBody(c, z.object({ ...content, target, ticker: ticker.optional() }))
+  const body = await readBody(
+    c,
+    z.object({ ...content, target, ticker: ticker.optional(), layout: z.enum(['full', 'split']).optional(), side: side.optional() }),
+  )
   const { tenantId } = c.get('auth')
+  const split = body.layout === 'split' ? body.side : undefined
+  if (body.layout === 'split' && !split) throw fail(400, 'Pilih isi panel kedua untuk tata letak bagi layar')
+  if (split?.kind === 'image') {
+    const image = await c.env.DB.prepare(
+      "SELECT 1 FROM media WHERE id = ? AND tenant_id = ? AND status = 'ready' AND kind = 'file' AND mime LIKE 'image/%'",
+    )
+      .bind(split.mediaId, tenantId)
+      .first()
+    if (!image) throw fail(400, 'Foto untuk panel kedua tidak ditemukan')
+  }
   const [resolved, devices] = await Promise.all([
     resolveContent(c.env.DB, tenantId, body.contentType, body.contentId),
     resolveTarget(c.env.DB, tenantId, body.target, true),
@@ -130,6 +153,11 @@ app.post('/broadcasts', requirePerm('broadcast'), async (c) => {
     startAt: Date.now() + 4000,
     paused: false,
     ticker: body.ticker && { ...body.ticker, bg: body.ticker.bg.toLowerCase() },
+    layout: split ? 'split' : undefined,
+    side:
+      split?.kind === 'text'
+        ? { ...split, bg: split.bg.toLowerCase(), color: split.color.toLowerCase() }
+        : split,
   }
   await hub(c.env, tenantId).dispatch(tenantId, devices.map((d) => d.id), cmd)
   audit(c, 'broadcast.sent', { name: resolved.name, target: body.target.type, screens: devices.length })

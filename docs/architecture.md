@@ -28,7 +28,7 @@ Request routing is declared in `wrangler.jsonc`: `/api/*` and `/media/*` always 
 
 ## How the pieces work
 
-**Pairing.** A TV opens `/player` and shows a 6-character code. An admin types it under Layar, which creates the device and hands the TV a token once. Removing the device revokes the token.
+**Pairing.** A TV opens `/player` and shows a 6-character code plus a QR of `/layar?pair=<code>`. An admin scans the QR (or types the code under Layar), which creates the device and hands the TV a token once. The scanned code is kept in the tab's `sessionStorage` so a login redirect in between does not lose it. Removing the device revokes the token.
 
 **Sending.** A broadcast becomes a command holding the item list and a `startAt` timestamp on the server clock, a few seconds ahead. Players measure their clock offset over the socket and derive their position from `startAt`, so TVs start together and a TV that joins late lands on the same spot. Pause stores `pausedAt`; resume shifts `startAt` by the pause length.
 
@@ -48,6 +48,10 @@ Request routing is declared in `wrangler.jsonc`: `/api/*` and `/media/*` always 
 - **Portrait screens**: each screen can be rotated 90° or 270°. The TV rotates its own stage in CSS; files are never re-encoded.
 - **Emergency announcement**: one message and background colour per business, stored in the `announcements` table apart from the current command. The hub pushes it to the targeted screens and they cover whatever is playing with large text. Clearing it sends `null` and the TVs rejoin the running timeline where it should be. Available from Pro (and during the trial), but clearing is always allowed in case a plan lapses while the message is up.
 - **Prayer pause**: per branch, off by default. Pick a city (or enter coordinates) and how long to pause; TVs in that branch show a prayer notice at each of the five times and resume on their own. Times are computed on the TV with the Kemenag criteria (`src/shared/prayer.ts`), so the pause also happens offline. Friday midday has its own, longer pause.
+- **Screen groups (zones)**: `device_groups` holds named zones per tenant and `devices.group_id` points at one. `resolveTarget` expands `type: 'group'` to the screens inside, so broadcasts, schedules, announcements, pause/resume, and plan coverage all work with the same target shape.
+- **Opening hours**: each branch can carry `hours_enabled`, `open_time`, `close_time`, and `closed_text`. `GET /api/player/me` hands them to the TV, which compares them against its own synced clock in the branch's timezone (`src/shared/hours.ts`). Outside the window the player pauses the timeline like a prayer pause, shows a branded closed screen, and reports `closed` so the dashboard says so too. Closing after midnight works by giving a close time earlier than the open time.
+- **Split layout**: a broadcast can carry `layout: 'split'` plus a `side` panel (text with colours, or a photo from the library). The player gives two thirds of the stage to the video and one third to the panel; the side photo is cached with the command so the panel survives an internet drop. The panel lives inside the command JSON, so no schema change was needed for it.
+- **Slides**: promo slides are drawn on a 1920×1080 canvas in the dashboard from a set of vertical-specific templates (`src/web/lib/slides.ts`), then uploaded through the ordinary photo path. No server-side rendering and no extra storage path.
 - **Statistics**: every TV reports its online time and seconds played per item every 10 minutes. `/statistik` summarises all screens, `/layar/:id` shows one screen with daily charts and its content ranking, and both export a play report as CSV. History reaches back 7 days on the free plan, 30 on trial and Pro, 90 on Bisnis.
 
 ## Tenancy and access
