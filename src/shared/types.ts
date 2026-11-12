@@ -34,6 +34,33 @@ export type CmdItem = {
   duration: number | null
 }
 
+/** One line of text scrolling along the bottom of the screen. */
+export type Ticker = {
+  text: string
+  /** Pixels per second. */
+  speed: number
+  bg: string
+}
+
+export const TICKER_SPEEDS = [
+  { value: 60, label: 'Lambat' },
+  { value: 120, label: 'Sedang' },
+  { value: 200, label: 'Cepat' },
+] as const
+
+export type DeviceRotation = 0 | 90 | 180 | 270
+
+export type Announcement = {
+  id: string
+  text: string
+  bg: string
+}
+
+/** Second panel beside the main video, used by the split layout. */
+export type SidePanel =
+  | { kind: 'text'; title: string | null; text: string; bg: string; color: string }
+  | { kind: 'image'; mediaId: string; title: string | null }
+
 export type Cmd = {
   id: string
   name: string
@@ -43,9 +70,14 @@ export type Cmd = {
   paused: boolean
   pausedAt?: number
   scheduleId?: string
+  // Overrides the branch's running text for this broadcast.
+  ticker?: Ticker
+  /** `split` gives the right third of the screen to `side`; omitted means full screen. */
+  layout?: 'full' | 'split'
+  side?: SidePanel
 }
 
-export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error'
+export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error' | 'closed'
 
 export type Reported = {
   status: PlayerStatus
@@ -65,12 +97,23 @@ export type DeviceLive = {
   desired: { id: string; name: string; paused: boolean; scheduleId?: string } | null
 }
 
-export type Target = { type: 'all' | 'branch' | 'device'; ids: string[] }
+export type Target = { type: 'all' | 'branch' | 'group' | 'device'; ids: string[] }
+
+/** Branch opening hours in its own timezone. Outside them TVs show a closed screen instead of the schedule. */
+export type OpeningHours = {
+  enabled: boolean
+  /** `HH:MM`. `close` may be earlier than `open` for a shop that closes after midnight. */
+  open: string | null
+  close: string | null
+  /** Replaces the default "Buka lagi pukul ..." line. */
+  text: string | null
+}
 
 export type ServerToPlayer =
-  | { t: 'welcome'; now: number; cmd: Cmd | null }
+  | { t: 'welcome'; now: number; cmd: Cmd | null; ann?: Announcement | null }
   | { t: 'time'; c: number; s: number }
   | { t: 'cmd'; cmd: Cmd | null }
+  | { t: 'announcement'; a: Announcement | null }
   | { t: 'revoked' }
   // Branch or tenant settings changed; the player fetches its info again.
   | { t: 'refresh' }

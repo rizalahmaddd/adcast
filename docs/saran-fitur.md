@@ -2,34 +2,53 @@
 
 Catatan 11 November 2026. Urutan di bawah adalah urutan yang saya sarankan untuk dikerjakan: paling berguna bagi pelanggan dan paling murah dibangun lebih dulu.
 
+Nomor 1 sampai 4 sudah dikerjakan di branch `dev`.
+
+## Pembeda produk ✅
+
+Keempat pembeda di bawah sudah dikerjakan di branch `dev`:
+
+1. **Grup layar (zona).** Layar bisa dikumpulkan lintas cabang (kasir, ruang tunggu) dan dikirimi tayangan sebagai satu tujuan. Dipakai juga oleh jadwal, pengumuman darurat, dan kontrol jeda/hentikan.
+2. **Jam operasional dan layar tutup.** Cabang menyimpan jam buka/tutup dan pesan penutup. Di luar jam itu TV menampilkan layar tutup berlogo dan melaporkan status `closed`, lalu kembali sendiri saat jam buka. Keputusan diambil di TV dengan jam cabang, jadi tetap jalan saat internet putus.
+3. **Bagi layar.** Kiriman bisa memakai dua pertiga layar untuk video dan sepertiga untuk panel teks berwarna atau foto dari Media. Foto panel ikut disimpan di TV untuk pemutaran offline.
+4. **Slide siap pakai per jenis usaha.** Template kuliner, klinik, salon, bengkel, dan umum dirender di browser menjadi foto 1920×1080, lalu masuk ke Media seperti foto biasa.
+
 ## Layak dikerjakan
 
-### 1. Teks berjalan
+### 1. Teks berjalan ✅
 Satu baris teks yang bergerak di bawah tayangan: promo hari ini, pengumuman, nomor antrean, jam buka.
+
+**Status:** sudah dikerjakan di branch `dev`.
 
 - Kenapa: hampir selalu diminta untuk layar toko, klinik, dan ruang tunggu. Pelanggan bisa mengganti pesan tanpa membuat video baru.
 - Bentuknya: teks diatur per cabang atau per kiriman tayangan, dengan pilihan kecepatan dan warna latar. TV menggambar teksnya sendiri di atas video atau foto.
 - Biaya jalan: nol. Hanya teks yang ikut dikirim bersama perintah tayang.
 - Paket: semua paket. Fitur ini membantu orang betah di paket Gratis sampai butuh lebih banyak layar.
 
-### 2. Layar tegak (portrait)
+### 2. Layar tegak (portrait) ✅
 Pengaturan putar 90° atau 270° per layar, untuk TV yang dipasang berdiri.
+
+**Status:** sudah dikerjakan di branch `dev`.
 
 - Kenapa: banyak layar promosi di mal, apotek, dan lobi dipasang tegak. Tanpa ini pelanggan harus memutar videonya sendiri sebelum upload.
 - Bentuknya: pilihan orientasi di "Ubah layar". TV memutar tampilannya lewat CSS, tidak ada proses ulang file.
 - Biaya jalan: nol.
 - Paket: semua paket.
 
-### 3. Masa berlaku konten
+### 3. Masa berlaku konten ✅
 Tanggal mulai dan tanggal selesai per media.
+
+**Status:** sudah dikerjakan di branch `dev`.
 
 - Kenapa: promo yang sudah lewat masih tayang adalah keluhan klasik. Dengan ini promo berhenti sendiri saat periodenya habis.
 - Bentuknya: dua kolom tanggal opsional di media. Item di luar masa berlakunya dilewati saat playlist disusun untuk TV.
-- Hal yang perlu diputuskan: playlist yang semua isinya kedaluwarsa sebaiknya menampilkan layar diam atau tetap memutar item terakhir.
+- Keputusan: playlist yang semua isinya kedaluwarsa membiarkan layarnya diam, bukan memutar item terakhir.
 - Paket: semua paket.
 
-### 4. Pengumuman darurat
+### 4. Pengumuman darurat ✅
 Satu tombol untuk menimpa semua layar (atau satu cabang) dengan pesan teks besar, lalu kembali ke tayangan semula saat dimatikan.
+
+**Status:** sudah dikerjakan di branch `dev`.
 
 - Kenapa: berguna untuk "toko tutup lebih awal", "antrean pindah ke lantai 2", atau keadaan darurat. Saat ini caranya harus kirim tayangan baru lalu kirim ulang yang lama.
 - Bentuknya: pesan disimpan terpisah dari tayangan, jadi tayangan yang sedang berjalan tidak hilang.

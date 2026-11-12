@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception'
 import type { AppEnv, Bindings } from './env'
 import { purgeLapsedUploads } from './lib/purge'
 import admin from './routes/admin'
+import announcements from './routes/announcements'
 import auth from './routes/auth'
 import billing from './routes/billing'
 import content from './routes/content'
@@ -32,6 +33,7 @@ app.route('/api/media', media)
 app.route('/api/billing', billing)
 app.route('/api', devices)
 app.route('/api', content)
+app.route('/api/announcements', announcements)
 app.route('/api', admin)
 
 app.all('/api/*', (c) => c.json({ error: 'Tidak ditemukan' }, 404))

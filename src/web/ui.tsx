@@ -96,11 +96,13 @@ export function Modal({
   onClose,
   children,
   wide,
+  sheet,
 }: {
   title: string
   onClose: () => void
   children: ReactNode
   wide?: boolean
+  sheet?: boolean
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
@@ -113,8 +115,10 @@ export function Modal({
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
       className={cx(
-        'm-auto max-h-[92dvh] w-[calc(100vw-1.5rem)] overflow-y-auto rounded-lg border border-line bg-surface p-0 text-ink shadow-xl',
-        wide ? 'max-w-2xl' : 'max-w-md',
+        'overflow-y-auto bg-surface p-0 text-ink shadow-xl',
+        sheet
+          ? 'fixed inset-x-0 bottom-0 top-auto m-0 max-h-[85dvh] w-full max-w-none rounded-t-xl border-x-0 border-b-0 border-t border-line pb-[env(safe-area-inset-bottom)]'
+          : cx('m-auto max-h-[92dvh] w-[calc(100vw-1.5rem)] rounded-lg border border-line', wide ? 'max-w-2xl' : 'max-w-md'),
       )}
     >
       <div className="sticky top-0 flex items-center justify-between gap-4 border-b border-line bg-surface px-5 py-3">
@@ -200,7 +204,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={push}>
       {children}
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-4 z-50 grid justify-items-center gap-2 px-4">
+      <div
+        aria-live="polite"
+        className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem_+_env(safe-area-inset-bottom))] z-50 grid justify-items-center gap-2 px-4 lg:bottom-4"
+      >
         {toasts.map((t) => (
           <p
             key={t.id}

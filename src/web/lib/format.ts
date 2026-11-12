@@ -13,6 +13,8 @@ const clock = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-dig
 const date = new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
 
 export const formatDate = (ms: number) => date.format(ms)
+/** Formats a `YYYY-MM-DD` calendar day (validity dates) the same way as timestamps. */
+export const formatDay = (day: string) => date.format(new Date(`${day}T00:00:00`))
 export const formatRupiah = (amount: number) => `Rp ${amount.toLocaleString('id-ID')}`
 export const formatDateTime = (ms: number) => dateTime.format(ms)
 export const formatClock = (ms: number) => clock.format(ms)
@@ -41,7 +43,7 @@ export function formatBytes(bytes: number): string {
   return `${bytes > 0 ? Math.max(1, Math.round(bytes / 1024)) : 0} KB`
 }
 
-export type ScreenState = 'never' | 'offline' | 'error' | 'playing' | 'paused' | 'idle'
+export type ScreenState = 'never' | 'offline' | 'error' | 'playing' | 'paused' | 'closed' | 'idle'
 
 export function screenState(live: DeviceLive | undefined): ScreenState {
   if (!live || (!live.online && !live.lastSeen)) return 'never'
@@ -50,6 +52,7 @@ export function screenState(live: DeviceLive | undefined): ScreenState {
   if (status === 'error') return 'error'
   if (status === 'playing' || status === 'loading') return 'playing'
   if (status === 'paused') return 'paused'
+  if (status === 'closed') return 'closed'
   return 'idle'
 }
 
@@ -59,6 +62,7 @@ export const STATE_LABEL: Record<ScreenState, string> = {
   error: 'Error',
   playing: 'Memutar',
   paused: 'Dijeda',
+  closed: 'Tutup (luar jam operasional)',
   idle: 'Online, tidak memutar',
 }
 
@@ -68,6 +72,7 @@ export const STATE_COLOR: Record<ScreenState, string> = {
   error: 'text-bad',
   playing: 'text-ok',
   paused: 'text-warn',
+  closed: 'text-muted',
   idle: 'text-ink',
 }
 

@@ -265,6 +265,110 @@ assert.equal((await again.next((m) => m.t === 'welcome', 'welcome 2')).cmd.id, c
 ok(await owner('POST', '/api/broadcasts/control', { action: 'stop', target: { type: 'all', ids: [] } }), 'stop')
 assert.equal((await again.next((m) => m.t === 'cmd', 'stop cmd')).cmd, null)
 
+// Running text: a branch default, overridable per broadcast
+ok(
+  await owner('PATCH', `/api/branches/${branch.id}`, {
+    name: 'Pusat',
+    timezone: 'Asia/Jakarta',
+    ticker: { enabled: true, text: 'Promo hari ini', speed: 120, bg: '#000000' },
+  }),
+  'branch ticker',
+)
+const tickerInfo = ok(await tv('GET', '/api/player/me', undefined, { authorization: `Bearer ${token}` }), 'player me ticker')
+assert.deepEqual(tickerInfo.ticker, { text: 'Promo hari ini', speed: 120, bg: '#000000' })
+ok(
+  await owner('POST', '/api/broadcasts', {
+    contentType: 'media',
+    contentId: up.id,
+    target: { type: 'all', ids: [] },
+    ticker: { text: 'Khusus kiriman ini', speed: 60, bg: '#112233' },
+  }),
+  'ticker broadcast',
+)
+const tickerCmd = (await again.next((m) => m.t === 'cmd' && !!m.cmd?.ticker, 'ticker cmd')).cmd
+assert.deepEqual(tickerCmd.ticker, { text: 'Khusus kiriman ini', speed: 60, bg: '#112233' })
+
+// Portrait screen: rotation is a per-screen setting handed to the TV
+ok(await owner('PATCH', `/api/devices/${device.id}`, { name: 'TV Lobi', branchId: branch.id, rotation: 90 }), 'rotation')
+assert.equal(
+  ok(await tv('GET', '/api/player/me', undefined, { authorization: `Bearer ${token}` }), 'player me rotation').device.rotation,
+  90,
+)
+
+// Device groups: a zone can be targeted across branches
+const group = ok(await owner('POST', '/api/groups', { name: 'Kasir', color: '#0f766e' }), 'group create')
+ok(await owner('PATCH', `/api/devices/${device.id}`, { name: 'TV Lobi', branchId: branch.id, groupId: group.id }), 'group join')
+assert.equal(ok(await owner('GET', '/api/devices'), 'devices group').find((d) => d.id === device.id).groupId, group.id)
+assert.equal(ok(await owner('GET', '/api/groups'), 'groups list').find((g) => g.id === group.id).devices, 1)
+ok(
+  await owner('POST', '/api/broadcasts', {
+    contentType: 'media',
+    contentId: up.id,
+    target: { type: 'group', ids: [group.id] },
+  }),
+  'broadcast to group',
+)
+
+// Split layout: the side panel travels inside the command and reaches the TV
+ok(
+  await owner('POST', '/api/broadcasts', {
+    contentType: 'media',
+    contentId: up.id,
+    target: { type: 'device', ids: [device.id] },
+    layout: 'split',
+    side: { kind: 'text', title: 'Menu', text: 'Nasi goreng', bg: '#0f172a', color: '#ffffff' },
+  }),
+  'split broadcast',
+)
+const split = (await again.next((m) => m.t === 'cmd' && m.cmd?.layout === 'split', 'split cmd')).cmd
+assert.equal(split.side.text, 'Nasi goreng')
+
+// Opening hours are handed to the TV, which decides the closed screen on its own clock
+ok(
+  await owner('PATCH', `/api/branches/${branch.id}`, {
+    name: 'Pusat',
+    timezone: 'Asia/Jakarta',
+    hours: { enabled: true, open: '08:00', close: '21:00', text: 'Sampai jumpa' },
+  }),
+  'branch hours',
+)
+assert.deepEqual(
+  ok(await tv('GET', '/api/player/me', undefined, { authorization: `Bearer ${token}` }), 'player me hours').hours,
+  { enabled: true, open: '08:00', close: '21:00', text: 'Sampai jumpa' },
+)
+
+// Deleting a group releases its screens instead of deleting them
+ok(await owner('DELETE', `/api/groups/${group.id}`), 'group delete')
+assert.equal(
+  ok(await owner('GET', '/api/devices'), 'devices after group delete').find((d) => d.id === device.id).groupId,
+  null,
+)
+
+// Content validity: an expired playlist is skipped entirely
+ok(
+  await owner('PATCH', `/api/media/${up.id}`, { title: 'Promo Siang', duration: 99, startDate: null, endDate: '2020-01-01' }),
+  'expire media',
+)
+assert.equal(
+  (await owner('POST', '/api/broadcasts', { contentType: 'playlist', contentId: playlist.id, target: { type: 'all', ids: [] } })).status,
+  400,
+  'expired playlist is not broadcast',
+)
+ok(
+  await owner('PATCH', `/api/media/${up.id}`, { title: 'Promo Siang', duration: 99, startDate: null, endDate: null }),
+  'restore media',
+)
+
+// Emergency announcement: shown on top, then cleared back to the running broadcast
+ok(
+  await owner('POST', '/api/announcements', { text: 'Toko tutup lebih awal', bg: '#b91c1c', target: { type: 'all', ids: [] } }),
+  'announcement',
+)
+assert.equal((await again.next((m) => m.t === 'announcement' && !!m.a, 'announcement shown')).a.text, 'Toko tutup lebih awal')
+assert.equal(ok(await owner('GET', '/api/announcements'), 'announcement state').text, 'Toko tutup lebih awal')
+ok(await owner('DELETE', '/api/announcements'), 'announcement clear')
+assert.equal((await again.next((m) => m.t === 'announcement' && !m.a, 'announcement cleared')).a, null)
+
 // Schedules
 const schedule = ok(await owner('POST', '/api/schedules', { name: 'Makan siang', contentType: 'playlist', contentId: playlist.id, target: { type: 'all', ids: [] }, days: [1, 2, 3, 4, 5], startTime: '11:30', endTime: '13:00', enabled: true }), 'schedule')
 assert.equal(ok(await owner('GET', '/api/schedules'), 'schedules')[0].days.length, 5)

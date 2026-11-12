@@ -46,7 +46,13 @@ Mengelola tayangan di banyak TV tidak lagi berarti keliling cabang dengan flashd
 - **Riwayat sesuai paket:** 7 hari di Gratis, 30 hari di Pro, 90 hari di Bisnis.
 - **Jeda salat:** per cabang, mati secara default. Pilih kota atau koordinat, lalu TV menampilkan pemberitahuan salat pada lima waktu dan lanjut sendiri, termasuk jeda Jumat yang lebih panjang.
 
-### 5. Paket, Pembayaran, dan Tampilan Usaha Sendiri
+### 5. Zona, Jam Operasional, dan Tata Letak
+- **Grup layar (zona):** kumpulkan layar dari cabang mana pun, misalnya semua kasir atau semua ruang tunggu, lalu kirim tayangan ke grup itu dalam satu langkah.
+- **Layar tutup otomatis:** isi jam buka dan tutup per cabang. Di luar jam itu TV menampilkan layar tutup berlogo, bukan promo yang sudah tidak relevan, lalu kembali sendiri saat jam buka tiba.
+- **Bagi layar:** dua pertiga layar untuk video, sepertiga untuk panel foto atau teks — cocok untuk menu, daftar harga, atau jadwal dokter.
+- **Slide siap pakai:** buat promo dari template per jenis usaha (kuliner, klinik, salon, bengkel, umum). Teks tinggal diganti dan hasilnya langsung masuk Media.
+
+### 6. Paket, Pembayaran, dan Tampilan Usaha Sendiri
 - **Tiga paket** (Gratis, Pro, Bisnis) dengan batas layar, cabang, pengguna, dan materi yang jelas.
 - **Uji coba 7 hari** dengan batas Pro, berakhir sendiri tanpa menagih.
 - **Bayar dengan QRIS:** total sudah otomatis masuk ke kode QR, tinggal bayar lalu tunggu konfirmasi.

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
+import { TIME_OF_DAY } from '../../shared/hours'
 import { DAY } from '../../shared/plans'
 import { TIMEZONES, type DeviceLive, type StatsReport } from '../../shared/types'
 import { audit, fail, hub, readBody, type AppEnv } from '../env'
@@ -26,6 +27,30 @@ const prayer = z
 const NO_PRAYER = { enabled: false, city: null, lat: null, lng: null, pause: 10, jumat: 45 }
 const prayerValues = (p: z.infer<typeof prayer>) => [p.enabled ? 1 : 0, p.city, p.lat, p.lng, p.pause, p.jumat]
 
+const ticker = z
+  .object({
+    enabled: z.boolean(),
+    text: z.string().trim().max(200).nullable(),
+    speed: z.number().int().min(20).max(600),
+    bg: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  })
+  .refine((t) => !t.enabled || !!t.text, 'Isi teks berjalan atau matikan pilihannya')
+const NO_TICKER = { enabled: false, text: null, speed: 120, bg: '#000000' }
+const tickerValues = (t: z.infer<typeof ticker>) => [t.enabled ? 1 : 0, t.text, t.speed, t.bg.toLowerCase()]
+
+const hours = z
+  .object({
+    enabled: z.boolean(),
+    open: z.string().regex(TIME_OF_DAY).nullable(),
+    close: z.string().regex(TIME_OF_DAY).nullable(),
+    text: z.string().trim().max(200).nullable(),
+  })
+  .refine((h) => !h.enabled || (h.open !== null && h.close !== null), 'Isi jam buka dan jam tutup')
+const NO_HOURS = { enabled: false, open: null, close: null, text: null }
+const hoursValues = (h: z.infer<typeof hours>) => [h.enabled ? 1 : 0, h.open, h.close, h.text]
+
+const rotation = z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)])
+
 type BranchRow = {
   id: string
   name: string
@@ -36,11 +61,21 @@ type BranchRow = {
   prayer_lng: number | null
   prayer_pause: number
   prayer_jumat: number
+  ticker_enabled: number
+  ticker_text: string | null
+  ticker_speed: number
+  ticker_bg: string
+  hours_enabled: number
+  open_time: string | null
+  close_time: string | null
+  closed_text: string | null
 }
 
 app.get('/branches', async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT id, name, timezone, prayer_enabled, prayer_city, prayer_lat, prayer_lng, prayer_pause, prayer_jumat
+    `SELECT id, name, timezone, prayer_enabled, prayer_city, prayer_lat, prayer_lng, prayer_pause, prayer_jumat,
+            ticker_enabled, ticker_text, ticker_speed, ticker_bg,
+            hours_enabled, open_time, close_time, closed_text
      FROM branches WHERE tenant_id = ? ORDER BY created_at`,
   )
     .bind(c.get('auth').tenantId)
@@ -58,26 +93,60 @@ app.get('/branches', async (c) => {
         pause: b.prayer_pause,
         jumat: b.prayer_jumat,
       },
+      ticker: {
+        enabled: b.ticker_enabled === 1,
+        text: b.ticker_text,
+        speed: b.ticker_speed,
+        bg: b.ticker_bg,
+      },
+      hours: {
+        enabled: b.hours_enabled === 1,
+        open: b.open_time,
+        close: b.close_time,
+        text: b.closed_text,
+      },
     })),
   )
 })
 
 app.post('/branches', requirePerm('device'), async (c) => {
-  const body = await readBody(c, z.object({ name, timezone, prayer: prayer.default(NO_PRAYER) }))
+  const body = await readBody(
+    c,
+    z.object({
+      name,
+      timezone,
+      prayer: prayer.default(NO_PRAYER),
+      ticker: ticker.default(NO_TICKER),
+      hours: hours.default(NO_HOURS),
+    }),
+  )
   await assertRoom(c, 'maxBranches')
   const id = newId()
   await c.env.DB.prepare(
-    `INSERT INTO branches (id, tenant_id, name, timezone, created_at, prayer_enabled, prayer_city, prayer_lat, prayer_lng, prayer_pause, prayer_jumat)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO branches (id, tenant_id, name, timezone, created_at, prayer_enabled, prayer_city, prayer_lat, prayer_lng, prayer_pause, prayer_jumat,
+                           ticker_enabled, ticker_text, ticker_speed, ticker_bg, hours_enabled, open_time, close_time, closed_text)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   )
-    .bind(id, c.get('auth').tenantId, body.name, body.timezone, Date.now(), ...prayerValues(body.prayer))
+    .bind(
+      id,
+      c.get('auth').tenantId,
+      body.name,
+      body.timezone,
+      Date.now(),
+      ...prayerValues(body.prayer),
+      ...tickerValues(body.ticker),
+      ...hoursValues(body.hours),
+    )
     .run()
   audit(c, 'branch.created', { name: body.name })
   return c.json({ id })
 })
 
 app.patch('/branches/:id', requirePerm('device'), async (c) => {
-  const body = await readBody(c, z.object({ name, timezone, prayer: prayer.optional() }))
+  const body = await readBody(
+    c,
+    z.object({ name, timezone, prayer: prayer.optional(), ticker: ticker.optional(), hours: hours.optional() }),
+  )
   const { tenantId } = c.get('auth')
   await c.env.DB.prepare('UPDATE branches SET name = ?, timezone = ? WHERE id = ? AND tenant_id = ?')
     .bind(body.name, body.timezone, c.req.param('id'), tenantId)
@@ -88,6 +157,20 @@ app.patch('/branches/:id', requirePerm('device'), async (c) => {
        WHERE id = ? AND tenant_id = ?`,
     )
       .bind(...prayerValues(body.prayer), c.req.param('id'), tenantId)
+      .run()
+  }
+  if (body.ticker) {
+    await c.env.DB.prepare(
+      'UPDATE branches SET ticker_enabled = ?, ticker_text = ?, ticker_speed = ?, ticker_bg = ? WHERE id = ? AND tenant_id = ?',
+    )
+      .bind(...tickerValues(body.ticker), c.req.param('id'), tenantId)
+      .run()
+  }
+  if (body.hours) {
+    await c.env.DB.prepare(
+      'UPDATE branches SET hours_enabled = ?, open_time = ?, close_time = ?, closed_text = ? WHERE id = ? AND tenant_id = ?',
+    )
+      .bind(...hoursValues(body.hours), c.req.param('id'), tenantId)
       .run()
   }
   // Timezone changes move schedule fire times, and TVs keep their own copy of the prayer settings.
@@ -113,13 +196,59 @@ app.delete('/branches/:id', requirePerm('device'), async (c) => {
   return c.json({ ok: true })
 })
 
+const groupBody = z.object({ name, color: z.string().regex(/^#[0-9a-fA-F]{6}$/) })
+
+app.get('/groups', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT g.id, g.name, g.color, COUNT(d.id) AS devices
+     FROM device_groups g LEFT JOIN devices d ON d.group_id = g.id
+     WHERE g.tenant_id = ? GROUP BY g.id ORDER BY g.created_at`,
+  )
+    .bind(c.get('auth').tenantId)
+    .all<{ id: string; name: string; color: string; devices: number }>()
+  return c.json(results)
+})
+
+app.post('/groups', requirePerm('device'), async (c) => {
+  const body = await readBody(c, groupBody)
+  const id = newId()
+  await c.env.DB.prepare('INSERT INTO device_groups (id, tenant_id, name, color, created_at) VALUES (?,?,?,?,?)')
+    .bind(id, c.get('auth').tenantId, body.name, body.color.toLowerCase(), Date.now())
+    .run()
+  audit(c, 'group.created', { name: body.name })
+  return c.json({ id })
+})
+
+app.patch('/groups/:id', requirePerm('device'), async (c) => {
+  const body = await readBody(c, groupBody)
+  const res = await c.env.DB.prepare('UPDATE device_groups SET name = ?, color = ? WHERE id = ? AND tenant_id = ?')
+    .bind(body.name, body.color.toLowerCase(), c.req.param('id'), c.get('auth').tenantId)
+    .run()
+  if (!res.meta.changes) throw fail(404, 'Grup tidak ditemukan')
+  audit(c, 'group.updated', { name: body.name })
+  return c.json({ ok: true })
+})
+
+app.delete('/groups/:id', requirePerm('device'), async (c) => {
+  const { tenantId } = c.get('auth')
+  const id = c.req.param('id')
+  const row = await c.env.DB.prepare('DELETE FROM device_groups WHERE id = ? AND tenant_id = ? RETURNING name')
+    .bind(id, tenantId)
+    .first<{ name: string }>()
+  if (!row) throw fail(404, 'Grup tidak ditemukan')
+  await c.env.DB.prepare('UPDATE devices SET group_id = NULL WHERE group_id = ? AND tenant_id = ?').bind(id, tenantId).run()
+  audit(c, 'group.deleted', { name: row.name })
+  return c.json({ ok: true })
+})
+
 app.get('/devices', async (c) => {
   const { tenantId } = c.get('auth')
   const { results } = await c.env.DB.prepare(
-    'SELECT id, name, branch_id AS branchId, created_at AS createdAt FROM devices WHERE tenant_id = ? ORDER BY name',
+    `SELECT id, name, branch_id AS branchId, group_id AS groupId, rotation, created_at AS createdAt
+     FROM devices WHERE tenant_id = ? ORDER BY name`,
   )
     .bind(tenantId)
-    .all<{ id: string; name: string; branchId: string; createdAt: number }>()
+    .all<{ id: string; name: string; branchId: string; groupId: string | null; rotation: number; createdAt: number }>()
   const [live, covered] = await Promise.all([
     results.length ? hub(c.env, tenantId).snapshot(results.map((d) => d.id)) : ({} as Record<string, DeviceLive>),
     coveredDevices(c.env.DB, tenantId),
@@ -156,15 +285,31 @@ app.post('/devices/pair', requirePerm('device'), async (c) => {
 })
 
 app.patch('/devices/:id', requirePerm('device'), async (c) => {
-  const body = await readBody(c, z.object({ name, branchId: z.string() }))
+  const body = await readBody(
+    c,
+    z.object({ name, branchId: z.string(), rotation: rotation.optional(), groupId: z.string().nullable().optional() }),
+  )
   const { tenantId } = c.get('auth')
   const branch = await c.env.DB.prepare('SELECT 1 FROM branches WHERE id = ? AND tenant_id = ?')
     .bind(body.branchId, tenantId)
     .first()
   if (!branch) throw fail(400, 'Cabang tidak ditemukan')
-  await c.env.DB.prepare('UPDATE devices SET name = ?, branch_id = ? WHERE id = ? AND tenant_id = ?')
-    .bind(body.name, body.branchId, c.req.param('id'), tenantId)
+  if (body.groupId) {
+    const group = await c.env.DB.prepare('SELECT 1 FROM device_groups WHERE id = ? AND tenant_id = ?')
+      .bind(body.groupId, tenantId)
+      .first()
+    if (!group) throw fail(400, 'Grup layar tidak ditemukan')
+  }
+  await c.env.DB.prepare(
+    'UPDATE devices SET name = ?, branch_id = ?, rotation = COALESCE(?, rotation) WHERE id = ? AND tenant_id = ?',
+  )
+    .bind(body.name, body.branchId, body.rotation ?? null, c.req.param('id'), tenantId)
     .run()
+  if (body.groupId !== undefined) {
+    await c.env.DB.prepare('UPDATE devices SET group_id = ? WHERE id = ? AND tenant_id = ?')
+      .bind(body.groupId, c.req.param('id'), tenantId)
+      .run()
+  }
   await hub(c.env, tenantId).refreshPlayers()
   audit(c, 'device.updated', { name: body.name })
   return c.json({ ok: true })

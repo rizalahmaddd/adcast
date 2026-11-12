@@ -15,23 +15,26 @@ import {
   Sun,
   Tv,
   Users,
-  X,
   type LucideIcon,
 } from 'lucide-react'
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import { Link, Navigate, NavLink, Outlet, useLocation } from 'react-router'
 import type { Permission } from '../shared/types'
 import { api, ApiError, useMe, type Me } from './lib/api'
+import { peekPairCode } from './lib/pairing'
 import { DAY } from '../shared/plans'
 import { formatDate, readableOn } from './lib/format'
-import { cx, Failed, Loading } from './ui'
+import { cx, Failed, Loading, Modal } from './ui'
 
-const NAV: { to: string; label: string; icon: LucideIcon; needs?: Permission; platform?: boolean }[] = [
-  { to: '/', label: 'Pantau', icon: LayoutGrid },
-  { to: '/video', label: 'Media', icon: Film },
+type NavItem = { to: string; label: string; icon: LucideIcon; needs?: Permission; platform?: boolean; primary?: boolean }
+
+// Five slots on mobile: the four busiest pages, everything else behind "Lainnya".
+const NAV: NavItem[] = [
+  { to: '/', label: 'Pantau', icon: LayoutGrid, primary: true },
+  { to: '/video', label: 'Media', icon: Film, primary: true },
   { to: '/playlist', label: 'Playlist', icon: ListVideo },
-  { to: '/jadwal', label: 'Jadwal', icon: CalendarClock },
-  { to: '/layar', label: 'Layar', icon: Tv },
+  { to: '/jadwal', label: 'Jadwal', icon: CalendarClock, primary: true },
+  { to: '/layar', label: 'Layar', icon: Tv, primary: true },
   { to: '/statistik', label: 'Statistik', icon: ChartNoAxesColumn },
   { to: '/pengguna', label: 'Pengguna', icon: Users, needs: 'user' },
   { to: '/log', label: 'Log aktivitas', icon: ScrollText, needs: 'audit' },
@@ -40,12 +43,14 @@ const NAV: { to: string; label: string; icon: LucideIcon; needs?: Permission; pl
   { to: '/pembayaran', label: 'Pembayaran', icon: BadgeCheck, platform: true },
 ]
 
+const MOBILE_SLOTS = 4
+
 export function Shell() {
   const me = useMe()
   const location = useLocation()
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
 
-  useEffect(() => setMenuOpen(false), [location.pathname])
+  useEffect(() => setMoreOpen(false), [location.pathname])
 
   useEffect(() => {
     if (!me.data) return
@@ -74,6 +79,16 @@ export function Shell() {
   const items = NAV.filter(
     (item) => (!item.needs || me.data.permissions.includes(item.needs)) && (!item.platform || me.data.platformAdmin),
   )
+  const primary = items.filter((item) => item.primary).slice(0, MOBILE_SLOTS)
+  const rest = items.filter((item) => !primary.includes(item))
+  const onRestPage = rest.some((item) =>
+    item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to),
+  )
+
+  if (location.pathname !== '/layar' && me.data.permissions.includes('device') && peekPairCode()) {
+    return <Navigate to="/layar" replace />
+  }
+
   const { planExpiresAt, limits } = me.data.tenant
   const endsSoon = planExpiresAt !== null && planExpiresAt - Date.now() < 7 * DAY && location.pathname !== '/paket'
 
@@ -81,25 +96,9 @@ export function Shell() {
     <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_1fr]">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-bg px-4 py-2 lg:hidden">
         <Brand me={me.data} />
-        <button
-          type="button"
-          onClick={() => setMenuOpen((open) => !open)}
-          aria-expanded={menuOpen}
-          aria-controls="menu-utama"
-          aria-label={menuOpen ? 'Tutup menu' : 'Buka menu'}
-          className="grid size-11 place-items-center rounded-md hover:bg-sunken"
-        >
-          {menuOpen ? <X className="size-6" aria-hidden /> : <Menu className="size-6" aria-hidden />}
-        </button>
       </header>
 
-      <aside
-        id="menu-utama"
-        className={cx(
-          'border-line bg-bg lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:border-r lg:px-3 lg:py-5',
-          menuOpen ? 'fixed inset-x-0 top-[3.75rem] bottom-0 z-20 flex flex-col overflow-y-auto px-3 py-4' : 'hidden',
-        )}
-      >
+      <aside className="hidden border-line bg-bg lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:overflow-y-auto lg:border-r lg:px-3 lg:py-5">
         <div className="mb-6 hidden px-2 lg:block">
           <Brand me={me.data} />
         </div>
@@ -124,7 +123,7 @@ export function Shell() {
         <Account me={me.data} />
       </aside>
 
-      <main className="min-w-0 px-4 py-6 sm:px-8 lg:py-8">
+      <main className="min-w-0 px-4 pt-6 pb-[calc(4.5rem_+_env(safe-area-inset-bottom))] sm:px-8 lg:py-8">
         <div className="mx-auto max-w-6xl">
           {endsSoon && (
             <p role="status" className="mb-6 rounded-md border border-warn/50 bg-surface px-4 py-3">
@@ -140,7 +139,87 @@ export function Shell() {
           </Suspense>
         </div>
       </main>
+
+      <nav
+        aria-label="Menu utama"
+        className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-bg pb-[env(safe-area-inset-bottom)] lg:hidden"
+      >
+        {primary.map((item) => (
+          <Tab key={item.to} item={item} />
+        ))}
+        {rest.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            aria-haspopup="dialog"
+            className="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-1 text-[0.7rem] font-semibold"
+          >
+            <TabIcon active={onRestPage}>
+              <Menu className="size-5" aria-hidden />
+            </TabIcon>
+            <span className={onRestPage ? 'text-ink' : 'text-muted'}>Lainnya</span>
+          </button>
+        )}
+      </nav>
+
+      {moreOpen && (
+        <Modal sheet title="Menu lainnya" onClose={() => setMoreOpen(false)}>
+          <nav aria-label="Menu lainnya" className="grid gap-1">
+            {rest.map(({ to, label, icon: Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={to === '/'}
+                onClick={() => setMoreOpen(false)}
+                className={({ isActive }) =>
+                  cx(
+                    'flex min-h-12 items-center gap-3 rounded-md px-3 font-semibold',
+                    isActive ? 'bg-brand text-on-brand' : 'text-muted hover:bg-sunken hover:text-ink',
+                  )
+                }
+              >
+                <Icon className="size-5 shrink-0" aria-hidden />
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+          <Account me={me.data} />
+        </Modal>
+      )}
     </div>
+  )
+}
+
+function Tab({ item }: { item: NavItem }) {
+  const { to, label, icon: Icon } = item
+  return (
+    <NavLink
+      to={to}
+      end={to === '/'}
+      className="flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-1 text-[0.7rem] font-semibold"
+    >
+      {({ isActive }) => (
+        <>
+          <TabIcon active={isActive}>
+            <Icon className="size-5" aria-hidden />
+          </TabIcon>
+          <span className={isActive ? 'text-ink' : 'text-muted'}>{label}</span>
+        </>
+      )}
+    </NavLink>
+  )
+}
+
+function TabIcon({ active, children }: { active: boolean; children: ReactNode }) {
+  return (
+    <span
+      className={cx(
+        'grid h-7 w-10 place-items-center rounded-full transition-colors',
+        active ? 'bg-brand text-on-brand' : 'text-muted',
+      )}
+    >
+      {children}
+    </span>
   )
 }
 
